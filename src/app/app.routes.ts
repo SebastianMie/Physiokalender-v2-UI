@@ -30,6 +30,13 @@ const mainRoutes: Routes = [
           ),
       },
       {
+        path: 'appointments',
+        loadComponent: () =>
+          import('./features/appointments/appointment-overview.component').then(
+            (m) => m.AppointmentOverviewComponent
+          ),
+      },
+      {
         path: 'absences',
         loadComponent: () =>
           import('./features/absences/absence-list.component').then(

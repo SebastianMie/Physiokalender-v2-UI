@@ -4,33 +4,33 @@ import { Observable } from 'rxjs';
 
 export interface Appointment {
   id: number;
-  patientId: number;
-  patientName: string;
   therapistId: number;
   therapistName: string;
-  treatmentTypeId: number;
-  treatmentTypeName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
+  patientId: number;
+  patientName: string;
+  date: string;          // "2024-01-15"
+  startTime: string;     // "2024-01-15T09:00:00" or "09:00:00"
+  endTime: string;       // "2024-01-15T10:00:00" or "10:00:00"
+  comment?: string;
   status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
-  notes?: string;
+  isHotair: boolean;
+  isUltrasonic: boolean;
+  isElectric: boolean;
   isBWO: boolean;
-  isHomeVisit: boolean;
+  createdBySeriesAppointment: boolean;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface CreateAppointmentRequest {
-  patientId: number;
   therapistId: number;
-  treatmentTypeId: number;
-  date: string;
-  startTime: string;
-  endTime?: string;
-  notes?: string;
-  isBWO?: boolean;
-  isHomeVisit?: boolean;
+  patientId: number;
+  date: string;        // ISO timestamp, e.g. "2024-01-15T00:00:00.000Z"
+  startTime: string;   // ISO timestamp, e.g. "2024-01-15T09:00:00.000Z"
+  endTime: string;     // ISO timestamp, e.g. "2024-01-15T10:00:00.000Z"
+  comment?: string;
+  isHotair?: boolean;
+  isUltrasonic?: boolean;
+  isElectric?: boolean;
 }
 
 export interface MoveAppointmentRequest {
@@ -107,18 +107,19 @@ export class AppointmentService {
     return this.http.get<Appointment[]>(`${this.apiUrl}/range`, { params });
   }
 
-  create(appointment: CreateAppointmentRequest, force = false): Observable<AppointmentSaveResult> {
-    const params = new HttpParams().set('force', force.toString());
+  create(appointment: CreateAppointmentRequest, forceOnConflict = false): Observable<AppointmentSaveResult> {
+    const params = new HttpParams().set('forceOnConflict', forceOnConflict.toString());
     return this.http.post<AppointmentSaveResult>(this.apiUrl, appointment, { params });
   }
 
-  update(id: number, appointment: Partial<CreateAppointmentRequest>, force = false): Observable<AppointmentSaveResult> {
-    const params = new HttpParams().set('force', force.toString());
+  update(id: number, appointment: Partial<CreateAppointmentRequest>, forceOnConflict = false): Observable<AppointmentSaveResult> {
+    const params = new HttpParams().set('forceOnConflict', forceOnConflict.toString());
     return this.http.put<AppointmentSaveResult>(`${this.apiUrl}/${id}`, appointment, { params });
   }
 
-  move(id: number, request: MoveAppointmentRequest): Observable<AppointmentSaveResult> {
-    return this.http.post<AppointmentSaveResult>(`${this.apiUrl}/${id}/move`, request);
+  move(id: number, request: MoveAppointmentRequest, forceOnConflict = false): Observable<AppointmentSaveResult> {
+    const params = new HttpParams().set('forceOnConflict', forceOnConflict.toString());
+    return this.http.post<AppointmentSaveResult>(`${this.apiUrl}/${id}/move`, request, { params });
   }
 
   cancel(id: number, reason?: string): Observable<Appointment> {

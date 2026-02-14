@@ -53,18 +53,18 @@ import { AppointmentService, Appointment } from '../../data-access/api/appointme
             <div class="card-header">
               <h2>Termine</h2>
               <div class="filter-tabs">
-                <button 
-                  [class.active]="appointmentFilter() === 'upcoming'" 
+                <button
+                  [class.active]="appointmentFilter() === 'upcoming'"
                   (click)="setAppointmentFilter('upcoming')">
                   Kommende
                 </button>
-                <button 
-                  [class.active]="appointmentFilter() === 'past'" 
+                <button
+                  [class.active]="appointmentFilter() === 'past'"
                   (click)="setAppointmentFilter('past')">
                   Vergangene
                 </button>
-                <button 
-                  [class.active]="appointmentFilter() === 'all'" 
+                <button
+                  [class.active]="appointmentFilter() === 'all'"
                   (click)="setAppointmentFilter('all')">
                   Alle
                 </button>
@@ -87,7 +87,7 @@ import { AppointmentService, Appointment } from '../../data-access/api/appointme
                       <a [routerLink]="['/dashboard/patients', apt.patientId]" class="patient-link">
                         {{ apt.patientName }}
                       </a>
-                      <span class="treatment">{{ apt.treatmentTypeName }}</span>
+                      <span class="treatment">{{ apt.comment }}</span>
                     </div>
                     <div class="apt-status">
                       <span class="status-badge" [class]="apt.status.toLowerCase()">
@@ -95,9 +95,6 @@ import { AppointmentService, Appointment } from '../../data-access/api/appointme
                       </span>
                       @if (apt.isBWO) {
                         <span class="tag bwo">BWO</span>
-                      }
-                      @if (apt.isHomeVisit) {
-                        <span class="tag home">Hausbesuch</span>
                       }
                     </div>
                   </div>

@@ -14,7 +14,7 @@ import { ToastService } from '../../../core/services/toast.service';
       <div class="login-card">
         <div class="logo-section">
           <h1 class="app-title">Physiokalender</h1>
-          <p class="app-subtitle">Terminverwaltung für Physiotherapien</p>
+          <p class="app-subtitle">Praxis Meyer Kalender für Physiotherapie</p>
         </div>
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" class="login-form">

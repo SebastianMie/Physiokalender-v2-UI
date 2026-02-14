@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, HostListener, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -30,21 +30,24 @@ import { takeUntil } from 'rxjs/operators';
             <a routerLink="/dashboard/calendar" routerLinkActive="active" class="nav-link">
               Kalender
             </a>
-            <a routerLink="/dashboard/absences" routerLinkActive="active" class="nav-link">
-              Abwesenheiten
+            <a routerLink="/dashboard/appointments" routerLinkActive="active" class="nav-link">
+              Termine
             </a>
             @if (isAdmin()) {
               <div class="dropdown" (mouseenter)="adminDropdownOpen = true" (mouseleave)="adminDropdownOpen = false">
                 <button class="nav-link nav-admin dropdown-trigger" [class.active]="isAdminRouteActive()">
-                  Verwaltung ▾
+                  Admin ▾
                 </button>
                 @if (adminDropdownOpen) {
                   <div class="dropdown-menu">
-                    <a routerLink="/dashboard/admin/therapists" routerLinkActive="active" class="dropdown-item">
+                    <a routerLink="/dashboard/therapists" routerLinkActive="active" class="dropdown-item">
                       Therapeuten
                     </a>
-                    <a routerLink="/dashboard/admin/patients" routerLinkActive="active" class="dropdown-item">
+                    <a routerLink="/dashboard/patients" routerLinkActive="active" class="dropdown-item">
                       Patienten
+                    </a>
+                    <a routerLink="/dashboard/absences" routerLinkActive="active" class="dropdown-item">
+                      Abwesenheiten
                     </a>
                     <a routerLink="/dashboard/admin/users" routerLinkActive="active" class="dropdown-item">
                       Benutzer
@@ -59,12 +62,12 @@ import { takeUntil } from 'rxjs/operators';
             }
           </nav>
           <div class="user-section">
-            <div class="user-dropdown" (mouseenter)="userDropdownOpen = true" (mouseleave)="userDropdownOpen = false">
-              <button class="user-avatar" [title]="currentUser?.username">
+            <div class="user-dropdown">
+              <button class="user-avatar" [title]="currentUser?.username" (click)="userDropdownOpen = !userDropdownOpen">
                 <span class="avatar-icon">👤</span>
               </button>
               @if (userDropdownOpen) {
-                <div class="user-dropdown-menu">
+                <div class="user-dropdown-menu" (click)="userDropdownOpen = false">
                   <div class="user-info">
                     <span class="user-name">{{ currentUser?.username }}</span>
                     <span class="user-role-badge">{{ getRoleLabel() }}</span>
@@ -191,16 +194,16 @@ import { takeUntil } from 'rxjs/operators';
     }
 
     .nav-admin {
-      color: #DC2626;
+      color: #2563EB;
 
       &:hover {
-        color: #991B1B;
-        background-color: #FEE2E2;
+        color: #1D4ED8;
+        background-color: #EFF6FF;
       }
 
       &.active {
-        color: #991B1B;
-        background-color: #FEE2E2;
+        color: #1D4ED8;
+        background-color: #EFF6FF;
       }
     }
 
@@ -245,8 +248,8 @@ import { takeUntil } from 'rxjs/operators';
       }
 
       &.active {
-        background-color: #FEE2E2;
-        color: #991B1B;
+        background-color: #EFF6FF;
+        color: #1D4ED8;
       }
     }
 
@@ -474,10 +477,20 @@ import { takeUntil } from 'rxjs/operators';
   `]
 })
 export class LayoutComponent implements OnInit, OnDestroy {
+  private elementRef = inject(ElementRef);
   environmentService = inject(EnvironmentService);
   currentUser: any;
   adminDropdownOpen = false;
   userDropdownOpen = false;
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement;
+    const userDropdown = this.elementRef.nativeElement.querySelector('.user-dropdown');
+    if (userDropdown && !userDropdown.contains(target)) {
+      this.userDropdownOpen = false;
+    }
+  }
   showPasswordModal = false;
   passwordForm = { currentPassword: '', newPassword: '', confirmPassword: '' };
   private destroy$ = new Subject<void>();
@@ -512,7 +525,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   isAdminRouteActive(): boolean {
-    return this.router.url.includes('/admin/');
+    const url = this.router.url;
+    return url.includes('/admin/') || url.includes('/therapists') || url.includes('/patients') || url.includes('/absences');
   }
 
   getRoleLabel(): string {

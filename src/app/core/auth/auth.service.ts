@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, tap, of, catchError } from 'rxjs';
 import { Router } from '@angular/router';
 
 export interface User {
@@ -24,7 +24,7 @@ export interface LoginResponse {
   providedIn: 'root',
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:8080/api';
+  private apiUrl = '/api';
   private userSubject = new BehaviorSubject<User | null>(null);
   public currentUser$ = this.userSubject.asObservable();
   public user$ = this.userSubject.asObservable();
@@ -46,6 +46,7 @@ export class AuthService {
         tap((response) => {
           localStorage.setItem('token', response.token);
           localStorage.setItem('token_expires', (Date.now() + response.expiresIn).toString());
+          localStorage.setItem('user', JSON.stringify(response.user));
           this.userSubject.next(response.user);
           this.isAuthenticatedSubject.next(true);
         })
@@ -55,6 +56,7 @@ export class AuthService {
   logout() {
     localStorage.removeItem('token');
     localStorage.removeItem('token_expires');
+    localStorage.removeItem('user');
     this.userSubject.next(null);
     this.isAuthenticatedSubject.next(false);
     this.router.navigate(['/login']);
@@ -74,16 +76,38 @@ export class AuthService {
     const token = this.getToken();
     if (token && !this.isTokenExpired()) {
       this.isAuthenticatedSubject.next(true);
-      this.fetchCurrentUser();
+      // Try to restore user from localStorage first
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        try {
+          this.userSubject.next(JSON.parse(storedUser));
+        } catch {
+          this.fetchCurrentUser();
+        }
+      } else {
+        this.fetchCurrentUser();
+      }
     } else {
       this.isAuthenticatedSubject.next(false);
     }
   }
 
   private fetchCurrentUser() {
-    this.http.get<User>(`${this.apiUrl}/auth/me`).subscribe(
-      (user) => this.userSubject.next(user),
-      () => this.logout()
-    );
+    this.http.get<User>(`${this.apiUrl}/auth/me`).pipe(
+      catchError(() => {
+        // If fetch fails, try localStorage
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          return of(JSON.parse(storedUser));
+        }
+        throw new Error('No user found');
+      })
+    ).subscribe({
+      next: (user) => {
+        this.userSubject.next(user);
+        localStorage.setItem('user', JSON.stringify(user));
+      },
+      error: () => this.logout()
+    });
   }
 }

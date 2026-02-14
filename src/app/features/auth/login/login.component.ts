@@ -19,18 +19,18 @@ import { ToastService } from '../../../core/services/toast.service';
 
         <form [formGroup]="form" (ngSubmit)="onSubmit()" class="login-form">
           <div class="form-group">
-            <label for="email" class="form-label">E-Mail</label>
+            <label for="username" class="form-label">Benutzername</label>
             <input
-              id="email"
-              type="email"
+              id="username"
+              type="text"
               class="form-input"
-              [class.error]="isFieldInvalid('email')"
-              formControlName="email"
-              placeholder="ihre.email@praxis.de"
-              autocomplete="email"
+              [class.error]="isFieldInvalid('username')"
+              formControlName="username"
+              placeholder="max.mustermann"
+              autocomplete="username"
             />
-            <span class="error-message" *ngIf="isFieldInvalid('email')">
-              Bitte geben Sie eine gültige E-Mail-Adresse ein.
+            <span class="error-message" *ngIf="isFieldInvalid('username')">
+              Bitte geben Sie Ihren Benutzernamen ein.
             </span>
           </div>
 
@@ -61,8 +61,8 @@ import { ToastService } from '../../../core/services/toast.service';
 
         <div class="demo-info">
           <p>Demo-Zugangsdaten:</p>
-          <p class="credentials">Email: <strong>demo&#64;physio.de</strong></p>
-          <p class="credentials">Passwort: <strong>demo123</strong></p>
+          <p class="credentials">Benutzer: <strong>max.mustermann</strong></p>
+          <p class="credentials">Passwort: <strong>password</strong></p>
         </div>
       </div>
     </div>
@@ -227,7 +227,7 @@ export class LoginComponent implements OnInit {
     private toastService: ToastService
   ) {
     this.form = this.fb.group({
-      email: ['', [Validators.required, Validators.email]],
+      username: ['', [Validators.required, Validators.minLength(3)]],
       password: ['', [Validators.required, Validators.minLength(6)]]
     });
   }
@@ -242,9 +242,9 @@ export class LoginComponent implements OnInit {
     }
 
     this.loading = true;
-    const { email, password } = this.form.value;
+    const { username, password } = this.form.value;
 
-    this.authService.login({ username: email, password }).subscribe({
+    this.authService.login({ username, password }).subscribe({
       next: (response) => {
         this.toastService.success('Erfolgreich angemeldet!');
         this.router.navigateByUrl(this.returnUrl);

@@ -1,12 +1,9 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
+import { adminGuard } from './core/auth/admin.guard';
 
-export const appRoutes: Routes = [
-  {
-    path: '',
-    redirectTo: 'dashboard',
-    pathMatch: 'full',
-  },
+// Main app routes (without environment prefix)
+const mainRoutes: Routes = [
   {
     path: 'login',
     loadComponent: () =>
@@ -19,10 +16,24 @@ export const appRoutes: Routes = [
       import('./layout/layout.component').then((m) => m.LayoutComponent),
     children: [
       {
+        path: '',
+        loadComponent: () =>
+          import('./features/dashboard/dashboard.component').then(
+            (m) => m.DashboardComponent
+          ),
+      },
+      {
         path: 'calendar',
         loadComponent: () =>
           import('./features/calendar/daily-list.component').then(
             (m) => m.DailyListComponent
+          ),
+      },
+      {
+        path: 'absences',
+        loadComponent: () =>
+          import('./features/absences/absence-list.component').then(
+            (m) => m.AbsenceListComponent
           ),
       },
       {
@@ -33,6 +44,13 @@ export const appRoutes: Routes = [
           ),
       },
       {
+        path: 'therapists/:id',
+        loadComponent: () =>
+          import('./features/therapists/therapist-detail.component').then(
+            (m) => m.TherapistDetailComponent
+          ),
+      },
+      {
         path: 'patients',
         loadComponent: () =>
           import('./features/patients/patient-list.component').then(
@@ -40,14 +58,79 @@ export const appRoutes: Routes = [
           ),
       },
       {
-        path: 'absences',
+        path: 'patients/:id',
         loadComponent: () =>
-          import('./features/absences/absence-list.component').then(
-            (m) => m.AbsenceListComponent
+          import('./features/patients/patient-detail.component').then(
+            (m) => m.PatientDetailComponent
           ),
+      },
+      {
+        path: 'admin',
+        canActivate: [adminGuard],
+        children: [
+          {
+            path: '',
+            redirectTo: 'users',
+            pathMatch: 'full',
+          },
+          {
+            path: 'users',
+            loadComponent: () =>
+              import('./features/admin/user-management.component').then(
+                (m) => m.UserManagementComponent
+              ),
+          },
+          {
+            path: 'settings',
+            loadComponent: () =>
+              import('./features/admin/settings.component').then(
+                (m) => m.SettingsComponent
+              ),
+          },
+        ],
       },
     ],
   },
+];
+
+export const appRoutes: Routes = [
+  // Root redirect
+  {
+    path: '',
+    redirectTo: 'dashboard',
+    pathMatch: 'full',
+  },
+
+  // Main routes (production - no prefix)
+  ...mainRoutes,
+
+  // DEV environment routes (/dev/...)
+  {
+    path: 'dev',
+    children: [
+      {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      ...mainRoutes,
+    ],
+  },
+
+  // TEST environment routes (/test/...)
+  {
+    path: 'test',
+    children: [
+      {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      ...mainRoutes,
+    ],
+  },
+
+  // Fallback
   {
     path: '**',
     redirectTo: 'dashboard',

@@ -67,6 +67,40 @@ export interface AppointmentSaveResult {
   saved: boolean;
 }
 
+export interface PageResponse<T> {
+  content: T[];
+  pageable: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  number: number;
+  size: number;
+  numberOfElements: number;
+  empty: boolean;
+}
+
+export interface AppointmentPageParams {
+  page?: number;
+  size?: number;
+  sortBy?: 'date' | 'time' | 'patient' | 'therapist';
+  sortDir?: 'asc' | 'desc';
+  dateFrom?: string;
+  dateTo?: string;
+  therapistId?: number;
+  status?: string;
+  search?: string;
+}
+
+export interface AppointmentExtendedPageParams extends AppointmentPageParams {
+  patientId?: number;
+  appointmentType?: 'series' | 'single';  // null = all
+  timeFilter?: 'upcoming' | 'past';  // null = all
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -77,6 +111,49 @@ export class AppointmentService {
 
   getAll(): Observable<Appointment[]> {
     return this.http.get<Appointment[]>(this.apiUrl);
+  }
+
+  /**
+   * Get paginated appointments with server-side filtering and sorting.
+   * Supports lazy loading for large datasets.
+   */
+  getPaginated(params: AppointmentPageParams): Observable<PageResponse<Appointment>> {
+    let httpParams = new HttpParams();
+
+    if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
+    if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
+    if (params.sortBy) httpParams = httpParams.set('sortBy', params.sortBy);
+    if (params.sortDir) httpParams = httpParams.set('sortDir', params.sortDir);
+    if (params.dateFrom) httpParams = httpParams.set('dateFrom', params.dateFrom);
+    if (params.dateTo) httpParams = httpParams.set('dateTo', params.dateTo);
+    if (params.therapistId) httpParams = httpParams.set('therapistId', params.therapistId.toString());
+    if (params.status) httpParams = httpParams.set('status', params.status);
+    if (params.search) httpParams = httpParams.set('search', params.search);
+
+    return this.http.get<PageResponse<Appointment>>(`${this.apiUrl}/paginated`, { params: httpParams });
+  }
+
+  /**
+   * Get paginated appointments with extended filtering (including appointment type and time filter).
+   * Used for therapist detail view and patient detail view with faceted search.
+   */
+  getPaginatedExtended(params: AppointmentExtendedPageParams): Observable<PageResponse<Appointment>> {
+    let httpParams = new HttpParams();
+
+    if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
+    if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
+    if (params.sortBy) httpParams = httpParams.set('sortBy', params.sortBy);
+    if (params.sortDir) httpParams = httpParams.set('sortDir', params.sortDir);
+    if (params.dateFrom) httpParams = httpParams.set('dateFrom', params.dateFrom);
+    if (params.dateTo) httpParams = httpParams.set('dateTo', params.dateTo);
+    if (params.therapistId) httpParams = httpParams.set('therapistId', params.therapistId.toString());
+    if (params.patientId) httpParams = httpParams.set('patientId', params.patientId.toString());
+    if (params.status) httpParams = httpParams.set('status', params.status);
+    if (params.search) httpParams = httpParams.set('search', params.search);
+    if (params.appointmentType) httpParams = httpParams.set('appointmentType', params.appointmentType);
+    if (params.timeFilter) httpParams = httpParams.set('timeFilter', params.timeFilter);
+
+    return this.http.get<PageResponse<Appointment>>(`${this.apiUrl}/paginated-extended`, { params: httpParams });
   }
 
   getById(id: number): Observable<Appointment> {

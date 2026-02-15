@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap, of, catchError } from 'rxjs';
 import { Router } from '@angular/router';
+import { AppointmentCacheService } from '../services/appointment-cache.service';
 
 export interface User {
   id: number;
@@ -32,6 +33,8 @@ export class AuthService {
   private isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
   public isAuthenticated$ = this.isAuthenticatedSubject.asObservable();
 
+  private appointmentCache = inject(AppointmentCacheService);
+
   constructor(
     private http: HttpClient,
     private router: Router
@@ -49,6 +52,9 @@ export class AuthService {
           localStorage.setItem('user', JSON.stringify(response.user));
           this.userSubject.next(response.user);
           this.isAuthenticatedSubject.next(true);
+
+          // Preload appointment data for faster initial display
+          this.appointmentCache.preloadData();
         })
       );
   }
@@ -59,6 +65,8 @@ export class AuthService {
     localStorage.removeItem('user');
     this.userSubject.next(null);
     this.isAuthenticatedSubject.next(false);
+    // Clear appointment cache on logout
+    this.appointmentCache.clearCache();
     this.router.navigate(['/login']);
   }
 

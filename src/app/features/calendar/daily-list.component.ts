@@ -8,6 +8,9 @@ import { AppointmentSeriesService, CreateAppointmentSeriesRequest } from '../../
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService, Patient, CreatePatientRequest } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
+import { AppointmentCacheService } from '../../core/services/appointment-cache.service';
+import { PracticeSettingsService } from '../../core/services/practice-settings.service';
+import { PrintService, PrintableAppointment } from '../../core/services/print.service';
 
 interface TimeSlot {
   time: string;
@@ -340,6 +343,23 @@ interface NewPatientForm {
 
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closeCreateModal()">Abbrechen</button>
+                @if (editingAppointment()) {
+                  <button type="button" class="btn-delete-icon" title="Termin löschen" (click)="confirmDeleteAppointment()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                  </button>
+                  <button type="button" class="btn-print-icon" title="Alle Termine des Patienten drucken" (click)="printPatientAppointments()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                      <rect x="6" y="14" width="12" height="8"></rect>
+                    </svg>
+                  </button>
+                }
                 <div class="spacer"></div>
                 <button type="submit" class="btn-primary"
                   [disabled]="!canSaveAppointment() || savingAppointment()">
@@ -347,6 +367,31 @@ interface NewPatientForm {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      }
+
+      <!-- Delete Appointment Confirmation Modal -->
+      @if (showDeleteAppointmentModal()) {
+        <div class="modal-overlay" (click)="cancelDeleteAppointment()">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>Termin löschen</h2>
+              <button class="btn-close" (click)="cancelDeleteAppointment()">&times;</button>
+            </div>
+            <p>Möchten Sie diesen Termin wirklich löschen?</p>
+            @if (editingAppointment(); as apt) {
+              <div class="delete-info">
+                <strong>{{ apt.patientName }}</strong><br>
+                {{ apt.date | date:'dd.MM.yyyy' }} · {{ apt.startTime }} - {{ apt.endTime }}
+              </div>
+            }
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
+              <button type="button" class="btn-danger" (click)="deleteAppointment()" [disabled]="deletingAppointment()">
+                {{ deletingAppointment() ? 'Löschen...' : 'Löschen' }}
+              </button>
+            </div>
           </div>
         </div>
       }
@@ -534,6 +579,14 @@ interface NewPatientForm {
     .btn-primary { padding: 0.5rem 1rem; border: none; background: #3B82F6; color: white; border-radius: 6px; cursor: pointer; font-size: 0.875rem; }
     .btn-primary:hover { background: #2563EB; }
     .btn-primary:disabled { background: #93C5FD; cursor: not-allowed; }
+    .btn-delete-icon { border: none; background: none; color: #9CA3AF; cursor: pointer; padding: 0.25rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .btn-delete-icon:hover { color: #DC2626; background: #FEE2E2; }
+    .btn-print-icon { border: none; background: none; color: #9CA3AF; cursor: pointer; padding: 0.25rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .btn-print-icon:hover { color: #F97316; background: #FFF7ED; }
+    .btn-danger { padding: 0.5rem 1rem; border: none; background: #DC2626; color: white; border-radius: 6px; cursor: pointer; font-size: 0.875rem; }
+    .btn-danger:hover { background: #B91C1C; }
+    .btn-danger:disabled { background: #FCA5A5; cursor: not-allowed; }
+    .delete-info { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 0.75rem; margin: 1rem 0; font-size: 0.875rem; color: #374151; }
 
     /* Form Styles */
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -593,6 +646,9 @@ export class DailyListComponent implements OnInit {
   private therapistService = inject(TherapistService);
   private patientService = inject(PatientService);
   private toastService = inject(ToastService);
+  private appointmentCache = inject(AppointmentCacheService);
+  private practiceSettings = inject(PracticeSettingsService);
+  private printService = inject(PrintService);
   private route = inject(ActivatedRoute);
 
   /** When embedded (e.g. on dashboard), hide view toggle and default to 'all' */
@@ -614,6 +670,8 @@ export class DailyListComponent implements OnInit {
   showNewPatientModal = signal(false);
   savingAppointment = signal(false);
   savingPatient = signal(false);
+  showDeleteAppointmentModal = signal(false);
+  deletingAppointment = signal(false);
   selectedPatient = signal<Patient | null>(null);
   allPatients = signal<Patient[]>([]);
   filteredPatients = signal<Patient[]>([]);
@@ -793,6 +851,8 @@ export class DailyListComponent implements OnInit {
   previousDay(): void {
     const date = new Date(this.selectedDate());
     date.setDate(date.getDate() - 1);
+    // Skip closed days (go backwards)
+    this.skipToOpenDay(date, -1);
     this.selectedDate.set(date);
     this.loadAppointments();
   }
@@ -800,13 +860,33 @@ export class DailyListComponent implements OnInit {
   nextDay(): void {
     const date = new Date(this.selectedDate());
     date.setDate(date.getDate() + 1);
+    // Skip closed days (go forward)
+    this.skipToOpenDay(date, 1);
     this.selectedDate.set(date);
     this.loadAppointments();
   }
 
   goToToday(): void {
-    this.selectedDate.set(new Date());
+    const date = new Date();
+    // Skip to next open day if today is closed
+    this.skipToOpenDay(date, 1);
+    this.selectedDate.set(date);
     this.loadAppointments();
+  }
+
+  /**
+   * Skip to the next open day in the given direction.
+   * Modifies the date in-place.
+   * @param date The date to start from (will be modified)
+   * @param direction 1 for forward, -1 for backward
+   * @param maxIterations Maximum days to skip (default 7 to avoid infinite loop)
+   */
+  private skipToOpenDay(date: Date, direction: 1 | -1, maxIterations = 7): void {
+    let iterations = 0;
+    while (!this.practiceSettings.isDayOpen(date.getDay()) && iterations < maxIterations) {
+      date.setDate(date.getDate() + direction);
+      iterations++;
+    }
   }
 
   onDateChange(event: Event): void {
@@ -1093,6 +1173,7 @@ export class DailyListComponent implements OnInit {
       next: (result) => {
         this.savingAppointment.set(false);
         if (result.saved) {
+          this.appointmentCache.invalidateCache(); // Invalidate cache on successful update
           this.toastService.show('Termin erfolgreich aktualisiert', 'success');
           this.closeCreateModal();
           this.loadAppointments();
@@ -1127,6 +1208,7 @@ export class DailyListComponent implements OnInit {
       next: (result) => {
         this.savingAppointment.set(false);
         if (result.saved) {
+          this.appointmentCache.invalidateCache(); // Invalidate cache on successful create
           this.toastService.show('Termin erfolgreich angelegt', 'success');
           this.closeCreateModal();
           this.loadAppointments();
@@ -1188,6 +1270,71 @@ export class DailyListComponent implements OnInit {
     this.editingAppointment.set(null);
   }
 
+  confirmDeleteAppointment(): void {
+    this.showDeleteAppointmentModal.set(true);
+  }
+
+  cancelDeleteAppointment(): void {
+    this.showDeleteAppointmentModal.set(false);
+  }
+
+  deleteAppointment(): void {
+    const apt = this.editingAppointment();
+    if (!apt) return;
+
+    this.deletingAppointment.set(true);
+    this.appointmentService.delete(apt.id).subscribe({
+      next: () => {
+        this.toastService.show('Termin wurde gelöscht', 'success');
+        this.showDeleteAppointmentModal.set(false);
+        this.closeCreateModal();
+        this.loadAppointments();
+        this.appointmentCache.invalidateCache();
+      },
+      error: (err) => {
+        console.error('Error deleting appointment:', err);
+        this.toastService.show('Fehler beim Löschen des Termins', 'error');
+        this.deletingAppointment.set(false);
+      },
+      complete: () => {
+        this.deletingAppointment.set(false);
+      }
+    });
+  }
+
+  printPatientAppointments(): void {
+    const apt = this.editingAppointment();
+    if (!apt || !apt.patientId) return;
+
+    // Fetch all appointments for this patient and print upcoming ones
+    this.appointmentService.getByPatient(apt.patientId).subscribe({
+      next: (appointments) => {
+        const today = new Date().toISOString().split('T')[0];
+        const upcomingAppointments = appointments
+          .filter(a => a.date >= today && a.status !== 'CANCELLED')
+          .sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))
+          .map(a => ({
+            id: a.id,
+            date: a.date,
+            startTime: a.startTime,
+            endTime: a.endTime,
+            patientName: a.patientName || apt.patientName || '',
+            therapistName: a.therapistName || '',
+            status: a.status
+          } as PrintableAppointment));
+
+        if (upcomingAppointments.length > 0) {
+          this.printService.printAppointments(apt.patientName || 'Patient', upcomingAppointments);
+        } else {
+          this.toastService.show('Keine kommenden Termine zum Drucken vorhanden', 'warning');
+        }
+      },
+      error: () => {
+        this.toastService.show('Fehler beim Laden der Termine', 'error');
+      }
+    });
+  }
+
   // ================== Drag & Drop ==================
 
   onDrop(event: CdkDragDrop<Appointment[]>, targetTherapistId: number): void {
@@ -1239,6 +1386,7 @@ export class DailyListComponent implements OnInit {
     this.appointmentService.move(appointment.id, request).subscribe({
       next: (result) => {
         if (result.saved) {
+          this.appointmentCache.invalidateCache(); // Invalidate cache on successful move
           this.toastService.show('Termin verschoben', 'success');
           this.loadAppointments();
         } else if (result.conflictCheck?.hasConflicts) {
@@ -1275,6 +1423,7 @@ export class DailyListComponent implements OnInit {
     const request = { ...pending.request, force: true };
     this.appointmentService.move(pending.appointmentId, request, true).subscribe({
       next: () => {
+        this.appointmentCache.invalidateCache(); // Invalidate cache on successful force move
         this.toastService.show('Termin trotz Konflikt verschoben', 'success');
         this.closeConflictModal();
         this.loadAppointments();

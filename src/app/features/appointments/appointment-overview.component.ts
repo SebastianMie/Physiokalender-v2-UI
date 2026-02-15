@@ -1,12 +1,14 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, Router } from '@angular/router';
-import { AppointmentService, Appointment } from '../../data-access/api/appointment.service';
+import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
+import { AppointmentService, Appointment, PageResponse, AppointmentPageParams } from '../../data-access/api/appointment.service';
 import { AppointmentSeriesService, AppointmentSeries, CancellationDTO } from '../../data-access/api/appointment-series.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
+import { AppointmentCacheService } from '../../core/services/appointment-cache.service';
 
 @Component({
   selector: 'app-appointment-overview',
@@ -20,7 +22,7 @@ import { ToastService } from '../../core/services/toast.service';
           <button class="view-tab" [class.active]="viewMode() === 'single'" (click)="setViewMode('single')">Einzeltermine</button>
           <button class="view-tab" [class.active]="viewMode() === 'series'" (click)="setViewMode('series')">Serientermine</button>
         </div>
-        <span class="result-count">{{ viewMode() === 'single' ? filteredAppointments().length + ' Termine' : filteredSeries().length + ' Serien' }}</span>
+        <span class="result-count">{{ viewMode() === 'single' ? totalElements() + ' Termine' : filteredSeries().length + ' Serien' }}</span>
       </div>
 
       <div class="overview-layout">
@@ -121,7 +123,7 @@ import { ToastService } from '../../core/services/toast.service';
         <!-- Main Table -->
         <div class="table-section">
           <div class="search-bar">
-            <input type="text" [(ngModel)]="searchTerm" (input)="applyFilters()"
+            <input type="text" [ngModel]="searchTerm" (input)="onSearchInput($event)"
               placeholder="Patient, Therapeut oder Kommentar suchen..." class="search-input" />
             @if (searchTerm) {
               <button class="search-clear" (click)="searchTerm = ''; applyFilters()">&times;</button>
@@ -129,7 +131,10 @@ import { ToastService } from '../../core/services/toast.service';
           </div>
 
           @if (loading()) {
-            <div class="loading">Termine werden geladen...</div>
+            <div class="table-loading-overlay">
+              <div class="loading-spinner"></div>
+              <span>Termine werden geladen...</span>
+            </div>
           } @else if (viewMode() === 'single') {
             <!-- SINGLE APPOINTMENTS VIEW -->
             @if (filteredAppointments().length === 0) {
@@ -531,20 +536,29 @@ import { ToastService } from '../../core/services/toast.service';
     .page-info { font-size: 0.7rem; color: #9CA3AF; margin-left: 0.5rem; }
   `]
 })
-export class AppointmentOverviewComponent implements OnInit {
+export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   private appointmentService = inject(AppointmentService);
   private seriesService = inject(AppointmentSeriesService);
   private therapistService = inject(TherapistService);
   private patientService = inject(PatientService);
   private toastService = inject(ToastService);
+  private cacheService = inject(AppointmentCacheService);
   private router = inject(Router);
+
+  private destroy$ = new Subject<void>();
+  private searchSubject = new Subject<string>();
 
   loading = signal(true);
   viewMode = signal<'single' | 'series'>('single');
 
-  // Single appointments
-  allAppointments = signal<Appointment[]>([]);
-  filteredAppointments = signal<Appointment[]>([]);
+  // Server-side pagination state
+  serverPage = signal<PageResponse<Appointment> | null>(null);
+
+  // Single appointments (from server pagination)
+  paginatedAppointments = computed(() => this.serverPage()?.content ?? []);
+  totalElements = computed(() => this.serverPage()?.totalElements ?? 0);
+  totalPages = computed(() => this.serverPage()?.totalPages ?? 1);
+  currentPage = computed(() => (this.serverPage()?.number ?? 0) + 1); // Convert 0-indexed to 1-indexed
 
   // Series
   allSeries = signal<AppointmentSeries[]>([]);
@@ -552,22 +566,23 @@ export class AppointmentOverviewComponent implements OnInit {
 
   therapists = signal<Therapist[]>([]);
 
-  // Search
+  // Search (with debounce)
   searchTerm = '';
+  private readonly SEARCH_DEBOUNCE_MS = 300;
 
-  // Sorting (single appointments)
+  // Sorting (single appointments) - server-side
   sortField: 'date' | 'patient' | 'therapist' | 'time' = 'date';
   sortDir: 'asc' | 'desc' = 'desc';
 
-  // Sorting (series)
+  // Sorting (series) - client-side
   seriesSortField: 'patient' | 'therapist' | 'weekday' | 'time' | 'startDate' = 'startDate';
   seriesSortDir: 'asc' | 'desc' = 'desc';
 
-  // Pagination - single
+  // Pagination - single (server-side)
   pageSize = 50;
-  currentPage = signal(1);
+  requestedPage = signal(0); // 0-indexed for server
 
-  // Pagination - series
+  // Pagination - series (client-side)
   currentSeriesPage = signal(1);
 
   // Filters
@@ -610,13 +625,7 @@ export class AppointmentOverviewComponent implements OnInit {
     { value: 'COMPLETED', label: 'Abgeschlossen' }
   ];
 
-  totalPages = computed(() => Math.max(1, Math.ceil(this.filteredAppointments().length / this.pageSize)));
   totalSeriesPages = computed(() => Math.max(1, Math.ceil(this.filteredSeries().length / this.pageSize)));
-
-  paginatedAppointments = computed(() => {
-    const start = (this.currentPage() - 1) * this.pageSize;
-    return this.filteredAppointments().slice(start, start + this.pageSize);
-  });
 
   paginatedSeries = computed(() => {
     const start = (this.currentSeriesPage() - 1) * this.pageSize;
@@ -644,7 +653,28 @@ export class AppointmentOverviewComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.setupSearchDebounce();
     this.loadData();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  /**
+   * Setup debounced search to reduce API calls during typing.
+   */
+  private setupSearchDebounce(): void {
+    this.searchSubject.pipe(
+      takeUntil(this.destroy$),
+      debounceTime(this.SEARCH_DEBOUNCE_MS),
+      distinctUntilChanged()
+    ).subscribe(term => {
+      this.searchTerm = term;
+      this.requestedPage.set(0); // Reset to first page on search
+      this.fetchAppointments();
+    });
   }
 
   setViewMode(mode: 'single' | 'series'): void {
@@ -660,11 +690,34 @@ export class AppointmentOverviewComponent implements OnInit {
     this.therapistService.getAll().subscribe({
       next: (t) => this.therapists.set(t.filter(x => x.isActive && x.id != null && x.fullName))
     });
-    this.appointmentService.getAll().subscribe({
-      next: (apts) => {
-        // Only single appointments (non-series) in single view
-        this.allAppointments.set((apts || []).filter(a => !a.createdBySeriesAppointment));
-        this.applyFilters();
+    // Fetch paginated appointments from server
+    this.fetchAppointments();
+  }
+
+  /**
+   * Fetch appointments from server with current filters and pagination.
+   * Uses server-side filtering and sorting for optimal performance.
+   */
+  private fetchAppointments(): void {
+    this.loading.set(true);
+
+    const params: AppointmentPageParams = {
+      page: this.requestedPage(),
+      size: this.pageSize,
+      sortBy: this.sortField,
+      sortDir: this.sortDir,
+      dateFrom: this.filterDateFrom || undefined,
+      dateTo: this.filterDateTo || undefined,
+      therapistId: this.getSelectedTherapistId(),
+      status: this.getSelectedStatus(),
+      search: this.searchTerm || undefined
+    };
+
+    this.cacheService.getPaginated(params).pipe(
+      takeUntil(this.destroy$)
+    ).subscribe({
+      next: (pageResult) => {
+        this.serverPage.set(pageResult);
         this.loading.set(false);
       },
       error: () => {
@@ -672,6 +725,28 @@ export class AppointmentOverviewComponent implements OnInit {
         this.toastService.show('Fehler beim Laden der Termine', 'error');
       }
     });
+  }
+
+  /**
+   * Get the first selected therapist ID for server-side filter.
+   * Note: For multiple therapists, client-side filtering is applied.
+   */
+  private getSelectedTherapistId(): number | undefined {
+    if (this.filterTherapistIds.size === 1) {
+      return Array.from(this.filterTherapistIds)[0];
+    }
+    return undefined;
+  }
+
+  /**
+   * Get the first selected status for server-side filter.
+   * Note: For multiple statuses, client-side filtering is applied.
+   */
+  private getSelectedStatus(): string | undefined {
+    if (this.filterStatuses.size === 1) {
+      return Array.from(this.filterStatuses)[0];
+    }
+    return undefined;
   }
 
   loadSeries(): void {
@@ -696,26 +771,33 @@ export class AppointmentOverviewComponent implements OnInit {
     }
   }
 
+  /**
+   * Apply appointment filters - triggers server-side fetch with new parameters.
+   */
   private applyAppointmentFilters(): void {
-    let result = [...this.allAppointments()];
+    // Reset to first page when filters change
+    this.requestedPage.set(0);
+    // Fetch with new filters from server
+    this.fetchAppointments();
+  }
 
-    if (this.searchTerm) {
-      const term = this.searchTerm.toLowerCase();
-      result = result.filter(a =>
-        a.patientName?.toLowerCase().includes(term) ||
-        a.therapistName?.toLowerCase().includes(term) ||
-        (a.comment && a.comment.toLowerCase().includes(term))
-      );
-    }
+  /**
+   * Handle search input - debounced to reduce API calls.
+   */
+  onSearchInput(event: Event): void {
+    const term = (event.target as HTMLInputElement).value;
+    this.searchSubject.next(term);
+  }
 
-    if (this.filterDateFrom) {
-      result = result.filter(a => this.extractDate(a.date) >= this.filterDateFrom);
-    }
-    if (this.filterDateTo) {
-      result = result.filter(a => this.extractDate(a.date) <= this.filterDateTo);
-    }
+  /**
+   * Get filtered appointments - applies client-side filters that aren't supported server-side.
+   * (e.g., multiple therapists, treatment types, BWO filter)
+   */
+  filteredAppointments = computed(() => {
+    let result = this.paginatedAppointments();
 
-    if (this.filterTherapistIds.size > 0) {
+    // Apply client-side filters for multi-select and treatment types
+    if (this.filterTherapistIds.size > 1) {
       result = result.filter(a => this.filterTherapistIds.has(a.therapistId));
     }
 
@@ -728,7 +810,7 @@ export class AppointmentOverviewComponent implements OnInit {
       });
     }
 
-    if (this.filterStatuses.size > 0) {
+    if (this.filterStatuses.size > 1) {
       result = result.filter(a => this.filterStatuses.has(a.status));
     }
 
@@ -736,29 +818,8 @@ export class AppointmentOverviewComponent implements OnInit {
       result = result.filter(a => a.isBWO);
     }
 
-    result.sort((a, b) => {
-      let cmp = 0;
-      switch (this.sortField) {
-        case 'date':
-          cmp = this.extractDate(a.date).localeCompare(this.extractDate(b.date))
-            || this.extractTime(a.startTime).localeCompare(this.extractTime(b.startTime));
-          break;
-        case 'patient':
-          cmp = (a.patientName || '').localeCompare(b.patientName || '');
-          break;
-        case 'therapist':
-          cmp = (a.therapistName || '').localeCompare(b.therapistName || '');
-          break;
-        case 'time':
-          cmp = this.extractTime(a.startTime).localeCompare(this.extractTime(b.startTime));
-          break;
-      }
-      return this.sortDir === 'asc' ? cmp : -cmp;
-    });
-
-    this.filteredAppointments.set(result);
-    this.currentPage.set(1);
-  }
+    return result;
+  });
 
   private applySeriesFilters(): void {
     let result = [...this.allSeries()];
@@ -897,8 +958,14 @@ export class AppointmentOverviewComponent implements OnInit {
 
   // ================== Pagination ==================
 
+  /**
+   * Navigate to a specific page - fetches data from server.
+   */
   goToPage(page: number): void {
-    if (page >= 1 && page <= this.totalPages()) this.currentPage.set(page);
+    if (page >= 1 && page <= this.totalPages()) {
+      this.requestedPage.set(page - 1); // Convert to 0-indexed for server
+      this.fetchAppointments();
+    }
   }
 
   goToSeriesPage(page: number): void {

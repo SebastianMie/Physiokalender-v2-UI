@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface Patient {
@@ -36,6 +36,31 @@ export interface CreatePatientRequest {
   isBWO?: boolean;
 }
 
+export interface PageResponse<T> {
+  content: T[];
+  pageable: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  number: number;
+  size: number;
+  numberOfElements: number;
+  empty: boolean;
+}
+
+export interface PatientPageParams {
+  page?: number;
+  size?: number;
+  sortBy?: 'firstName' | 'lastName' | 'fullName' | 'email' | 'telefon' | 'city' | 'isBWO';
+  sortDir?: 'asc' | 'desc';
+  search?: string;
+  isBWO?: boolean;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -46,6 +71,22 @@ export class PatientService {
 
   getAll(): Observable<Patient[]> {
     return this.http.get<Patient[]>(this.apiUrl);
+  }
+
+  /**
+   * Get paginated patients with server-side filtering and sorting.
+   */
+  getPaginated(params: PatientPageParams): Observable<PageResponse<Patient>> {
+    let httpParams = new HttpParams();
+
+    if (params.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
+    if (params.size !== undefined) httpParams = httpParams.set('size', params.size.toString());
+    if (params.sortBy) httpParams = httpParams.set('sortBy', params.sortBy);
+    if (params.sortDir) httpParams = httpParams.set('sortDir', params.sortDir);
+    if (params.search) httpParams = httpParams.set('search', params.search);
+    if (params.isBWO !== undefined) httpParams = httpParams.set('isBWO', params.isBWO.toString());
+
+    return this.http.get<PageResponse<Patient>>(`${this.apiUrl}/paginated`, { params: httpParams });
   }
 
   getById(id: number): Observable<Patient> {

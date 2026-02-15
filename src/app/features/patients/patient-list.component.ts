@@ -1,13 +1,14 @@
-import { Component, OnInit, signal, computed, inject } from '@angular/core';
+import { Component, OnInit, signal, computed, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
-import { Patient, PatientService } from '../../data-access/api/patient.service';
+import { Patient, PatientService, PageResponse, PatientPageParams } from '../../data-access/api/patient.service';
 import { AppointmentService, Appointment } from '../../data-access/api/appointment.service';
 import { AppointmentSeriesService, AppointmentSeries } from '../../data-access/api/appointment-series.service';
 import { ToastService } from '../../core/services/toast.service';
+import { Subject, debounceTime, distinctUntilChanged, switchMap, takeUntil, finalize } from 'rxjs';
 
-type SortField = 'fullName' | 'email' | 'telefon' | 'city' | 'isBWO';
+type SortField = 'firstName' | 'lastName' | 'fullName' | 'email' | 'telefon' | 'city' | 'isBWO';
 type SortDirection = 'asc' | 'desc';
 
 @Component({
@@ -23,7 +24,7 @@ type SortDirection = 'asc' | 'desc';
 
       <div class="card">
         <div class="search-bar">
-          <input type="text" placeholder="Suchen..." [value]="searchTerm()" (input)="onSearch($event)" class="search-input" />
+          <input type="text" placeholder="Suchen..." [value]="searchTerm()" (input)="onSearchInput($event)" class="search-input" />
           <div class="pagination-controls">
             <select [(ngModel)]="itemsPerPageValue" (change)="onItemsPerPageChange()" class="items-per-page-select">
               <option [value]="10">10 pro Seite</option>
@@ -34,6 +35,12 @@ type SortDirection = 'asc' | 'desc';
           </div>
         </div>
         <div class="table-wrapper">
+          @if (loading()) {
+            <div class="loading-overlay">
+              <div class="loading-spinner"></div>
+              <span>Laden...</span>
+            </div>
+          }
           <table class="table-compact">
             <thead>
               <tr>
@@ -46,7 +53,7 @@ type SortDirection = 'asc' | 'desc';
               </tr>
             </thead>
             <tbody>
-              @for (patient of paginatedPatients(); track patient.id) {
+              @for (patient of serverPatients(); track patient.id) {
                 <tr class="row-compact row-clickable" (click)="showPatientDetail(patient)">
                   <td class="name-cell">{{ patient.fullName || patient.firstName + ' ' + patient.lastName }}</td>
                   <td title="{{ patient.email || '' }}">{{ patient.email ? (patient.email.length > 25 ? patient.email.substring(0, 22) + '...' : patient.email) : '-' }}</td>
@@ -65,11 +72,11 @@ type SortDirection = 'asc' | 'desc';
           </table>
         </div>
         <div class="pagination-footer">
-          <span class="pagination-info">{{ (currentPage() - 1) * itemsPerPage() + 1 }}-{{ Math.min(currentPage() * itemsPerPage(), totalFilteredCount()) }} von {{ totalFilteredCount() }}</span>
+          <span class="pagination-info">{{ paginationStart() }}-{{ paginationEnd() }} von {{ totalElements() }}</span>
           <div class="pagination-buttons">
-            <button [disabled]="currentPage() === 1" (click)="previousPage()" class="btn-pagination">←</button>
-            <span class="page-number">Seite {{ currentPage() }} / {{ totalPages() }}</span>
-            <button [disabled]="currentPage() === totalPages()" (click)="nextPage()" class="btn-pagination">→</button>
+            <button [disabled]="currentPage() === 0 || loading()" (click)="previousPage()" class="btn-pagination">←</button>
+            <span class="page-number">Seite {{ currentPage() + 1 }} / {{ totalPages() || 1 }}</span>
+            <button [disabled]="currentPage() >= totalPages() - 1 || loading()" (click)="nextPage()" class="btn-pagination">→</button>
           </div>
         </div>
       </div>
@@ -292,7 +299,10 @@ type SortDirection = 'asc' | 'desc';
     .pagination-controls { display: flex; align-items: center; gap: 0.75rem; }
     .items-per-page-select { padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; background: white; cursor: pointer; }
     .items-per-page-select:focus { outline: none; border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-    .table-wrapper { overflow-y: auto; flex: 1; max-height: calc(100vh - 350px); }
+    .table-wrapper { overflow-y: auto; flex: 1; max-height: calc(100vh - 350px); position: relative; }
+    .loading-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; gap: 0.5rem; }
+    .loading-spinner { width: 32px; height: 32px; border: 3px solid #E5E7EB; border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .table-compact { width: 100%; border-collapse: collapse; }
     .table-compact th { background: #F9FAFB; padding: 0.5rem 0.75rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB; font-size: 0.875rem; position: sticky; top: 0; z-index: 10; }
     .table-compact td { padding: 0.4rem 0.75rem; border-bottom: 1px solid #E5E7EB; color: #1F2937; font-size: 0.875rem; height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -393,21 +403,44 @@ type SortDirection = 'asc' | 'desc';
     .more-appointments { text-align: center; color: #3B82F6; font-size: 0.8rem; cursor: pointer; padding: 0.5rem; font-weight: 500; }
   `]
 })
-export class PatientListComponent implements OnInit {
+export class PatientListComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private patientService = inject(PatientService);
   private appointmentService = inject(AppointmentService);
   private appointmentSeriesService = inject(AppointmentSeriesService);
   private toastService = inject(ToastService);
-  Math = Math; // Make Math available in template
 
-  patients = signal<Patient[]>([]);
+  // Destroy subject for cleanup
+  private destroy$ = new Subject<void>();
+
+  // Server-side pagination state
+  private serverPage = signal<PageResponse<Patient> | null>(null);
+  loading = signal(false);
   searchTerm = signal('');
   sortField = signal<SortField>('fullName');
   sortDirection = signal<SortDirection>('asc');
   itemsPerPage = signal(25);
   itemsPerPageValue: number = 25;
-  currentPage = signal(1);
+  currentPage = signal(0);  // 0-indexed for server
+
+  // Search debounce
+  private searchSubject = new Subject<string>();
+
+  // Computed from server response
+  serverPatients = computed(() => this.serverPage()?.content || []);
+  totalElements = computed(() => this.serverPage()?.totalElements || 0);
+  totalPages = computed(() => this.serverPage()?.totalPages || 0);
+  paginationStart = computed(() => {
+    const page = this.serverPage();
+    if (!page || page.empty) return 0;
+    return page.number * page.size + 1;
+  });
+  paginationEnd = computed(() => {
+    const page = this.serverPage();
+    if (!page || page.empty) return 0;
+    return page.number * page.size + page.numberOfElements;
+  });
+
   selectedPatient = signal<Patient | null>(null);
   showPatientDetailModal = false;
   showModal = false;
@@ -439,51 +472,59 @@ export class PatientListComponent implements OnInit {
       });
   });
 
-  filteredPatients = computed(() => {
-    let result = [...this.patients()];
-    const term = this.searchTerm().trim().toLowerCase();
-    if (term) {
-      result = result.filter(p => (p.fullName?.toLowerCase().includes(term)) || (p.firstName?.toLowerCase().includes(term)) || (p.lastName?.toLowerCase().includes(term)) || (p.email?.toLowerCase().includes(term)) || (p.telefon?.toLowerCase().includes(term)) || (p.city?.toLowerCase().includes(term)) || (p.street?.toLowerCase().includes(term)));
-    }
-    const field = this.sortField();
-    const dir = this.sortDirection();
-    result.sort((a, b) => {
-      let aVal: any = field === 'fullName' ? (a.fullName || `${a.firstName} ${a.lastName}`) : a[field];
-      let bVal: any = field === 'fullName' ? (b.fullName || `${b.firstName} ${b.lastName}`) : b[field];
-      if (aVal == null) aVal = '';
-      if (bVal == null) bVal = '';
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-      if (aVal < bVal) return dir === 'asc' ? -1 : 1;
-      if (aVal > bVal) return dir === 'asc' ? 1 : -1;
-      return 0;
+  constructor() {
+    // Setup debounced search
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntil(this.destroy$)
+    ).subscribe(term => {
+      this.searchTerm.set(term);
+      this.currentPage.set(0);
+      this.fetchPatients();
     });
-    return result;
-  });
-
-  totalFilteredCount = computed(() => this.filteredPatients().length);
-  totalPages = computed(() => Math.ceil(this.totalFilteredCount() / this.itemsPerPage()));
-
-  paginatedPatients = computed(() => {
-    const start = (this.currentPage() - 1) * this.itemsPerPage();
-    const end = start + this.itemsPerPage();
-    return this.filteredPatients().slice(start, end);
-  });
+  }
 
   ngOnInit() {
-    this.loadPatients();
+    this.fetchPatients();
     this.loadAppointments();
     this.loadAppointmentSeries();
   }
 
-  loadPatients() {
-    this.patientService.getAll().subscribe({
-      next: (data) => {
-        this.patients.set(data);
-        this.currentPage.set(1);
-      },
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  /**
+   * Fetch patients from server with current filters
+   */
+  fetchPatients() {
+    this.loading.set(true);
+
+    const params: PatientPageParams = {
+      page: this.currentPage(),
+      size: this.itemsPerPage(),
+      sortBy: this.sortField(),
+      sortDir: this.sortDirection(),
+      search: this.searchTerm() || undefined
+    };
+
+    this.patientService.getPaginated(params).pipe(
+      finalize(() => this.loading.set(false)),
+      takeUntil(this.destroy$)
+    ).subscribe({
+      next: (response) => this.serverPage.set(response),
       error: () => this.toastService.error('Fehler beim Laden')
     });
+  }
+
+  /**
+   * Handle search input with debounce
+   */
+  onSearchInput(event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchSubject.next(value);
   }
 
   loadAppointments() {
@@ -504,25 +545,23 @@ export class PatientListComponent implements OnInit {
     });
   }
 
-  onSearch(event: Event) {
-    this.searchTerm.set((event.target as HTMLInputElement).value);
-    this.currentPage.set(1); // Reset to first page on search
-  }
-
   onItemsPerPageChange() {
     this.itemsPerPage.set(this.itemsPerPageValue);
-    this.currentPage.set(1); // Reset to first page
+    this.currentPage.set(0);
+    this.fetchPatients();
   }
 
   previousPage() {
-    if (this.currentPage() > 1) {
+    if (this.currentPage() > 0) {
       this.currentPage.set(this.currentPage() - 1);
+      this.fetchPatients();
     }
   }
 
   nextPage() {
-    if (this.currentPage() < this.totalPages()) {
+    if (this.currentPage() < this.totalPages() - 1) {
       this.currentPage.set(this.currentPage() + 1);
+      this.fetchPatients();
     }
   }
 
@@ -533,7 +572,8 @@ export class PatientListComponent implements OnInit {
       this.sortField.set(field);
       this.sortDirection.set('asc');
     }
-    this.currentPage.set(1); // Reset to first page when sorting
+    this.currentPage.set(0);
+    this.fetchPatients();
   }
 
   getSortIcon(field: SortField): string {
@@ -569,7 +609,7 @@ export class PatientListComponent implements OnInit {
     this.patientService.update(patient.id, data).subscribe({
       next: () => {
         this.toastService.success('Patient aktualisiert');
-        this.loadPatients();
+        this.fetchPatients();
       },
       error: () => this.toastService.error('Fehler beim Speichern')
     });
@@ -584,7 +624,7 @@ export class PatientListComponent implements OnInit {
         next: () => {
           this.toastService.success('Patient gelöscht');
           this.closePatientDetailModal();
-          this.loadPatients();
+          this.fetchPatients();
         },
         error: () => this.toastService.error('Fehler beim Löschen')
       });
@@ -682,7 +722,7 @@ export class PatientListComponent implements OnInit {
     obs.subscribe({
       next: () => {
         this.toastService.success(this.editingId ? 'Aktualisiert' : 'Erstellt');
-        this.loadPatients();
+        this.fetchPatients();
         this.closeModal();
       },
       error: () => this.toastService.error('Fehler')
@@ -694,7 +734,7 @@ export class PatientListComponent implements OnInit {
       this.patientService.delete(this.patientToDelete.id).subscribe({
         next: () => {
           this.toastService.success('Gelöscht');
-          this.loadPatients();
+          this.fetchPatients();
           this.showDeleteModal = false;
           this.patientToDelete = null;
         },

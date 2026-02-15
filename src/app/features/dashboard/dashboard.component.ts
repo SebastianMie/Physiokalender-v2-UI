@@ -64,6 +64,7 @@ import { DailyListComponent } from '../calendar/daily-list.component';
     }
     .quick-links {
       display: flex;
+      justify-content: center;
       gap: 0.5rem;
       padding: 0.75rem 1.5rem;
       background: #F9FAFB;

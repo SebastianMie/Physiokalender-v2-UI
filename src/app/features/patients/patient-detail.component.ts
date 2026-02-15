@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { PatientService, Patient } from '../../data-access/api/patient.service';
 import { AppointmentService, Appointment } from '../../data-access/api/appointment.service';
 import { ToastService } from '../../core/services/toast.service';
+import { PrintService, PrintableAppointment } from '../../core/services/print.service';
 
 @Component({
   selector: 'app-patient-detail',
@@ -27,80 +28,149 @@ import { ToastService } from '../../core/services/toast.service';
           <div class="card form-card">
             <div class="card-title-row">
               <h2>Stammdaten</h2>
+              @if (!editMode()) {
+                <button class="btn-edit-toggle" (click)="toggleEditMode()">✏️ Bearbeiten</button>
+              }
             </div>
 
             <div class="form-section">
-              <div class="form-group">
-                <label>Vorname</label>
-                <input type="text" [(ngModel)]="editForm.firstName" />
-              </div>
-              <div class="form-group">
-                <label>Nachname</label>
-                <input type="text" [(ngModel)]="editForm.lastName" />
-              </div>
-              <div class="form-group">
-                <label>Geburtsdatum</label>
-                <input type="date" [(ngModel)]="editForm.dateOfBirth" />
-              </div>
-              <div class="form-group">
-                <label>E-Mail</label>
-                <input type="email" [(ngModel)]="editForm.email" />
-              </div>
-              <div class="form-group">
-                <label>Telefon</label>
-                <input type="tel" [(ngModel)]="editForm.telefon" />
-              </div>
-              <div class="form-group">
-                <label>Versicherung</label>
-                <input type="text" [(ngModel)]="editForm.insuranceType" />
-              </div>
-
-              <div class="form-divider"></div>
-              <h3>Adresse</h3>
-
-              <div class="form-row-2">
-                <div class="form-group flex-3">
-                  <label>Straße</label>
-                  <input type="text" [(ngModel)]="editForm.street" />
+              @if (editMode()) {
+                <!-- Edit Mode -->
+                <div class="form-group">
+                  <label>Vorname</label>
+                  <input type="text" [(ngModel)]="editForm.firstName" />
                 </div>
-                <div class="form-group flex-1">
-                  <label>Hausnr.</label>
-                  <input type="text" [(ngModel)]="editForm.houseNumber" />
+                <div class="form-group">
+                  <label>Nachname</label>
+                  <input type="text" [(ngModel)]="editForm.lastName" />
                 </div>
-              </div>
-              <div class="form-row-2">
-                <div class="form-group flex-1">
-                  <label>PLZ</label>
-                  <input type="text" [(ngModel)]="editForm.postalCode" />
+                <div class="form-group">
+                  <label>Geburtsdatum</label>
+                  <input type="date" [(ngModel)]="editForm.dateOfBirth" />
                 </div>
-                <div class="form-group flex-3">
-                  <label>Ort</label>
-                  <input type="text" [(ngModel)]="editForm.city" />
+                <div class="form-group">
+                  <label>E-Mail</label>
+                  <input type="email" [(ngModel)]="editForm.email" />
                 </div>
-              </div>
+                <div class="form-group">
+                  <label>Telefon</label>
+                  <input type="tel" [(ngModel)]="editForm.telefon" />
+                </div>
+                <div class="form-group">
+                  <label>Versicherung</label>
+                  <input type="text" [(ngModel)]="editForm.insuranceType" />
+                </div>
 
-              <div class="form-divider"></div>
+                <div class="form-divider"></div>
+                <h3>Adresse</h3>
 
-              <div class="form-group">
-                <label>Notizen</label>
-                <textarea [(ngModel)]="editForm.notes" rows="3" placeholder="Optionale Notizen..."></textarea>
-              </div>
+                <div class="form-row-2">
+                  <div class="form-group flex-3">
+                    <label>Straße</label>
+                    <input type="text" [(ngModel)]="editForm.street" />
+                  </div>
+                  <div class="form-group flex-1">
+                    <label>Hausnr.</label>
+                    <input type="text" [(ngModel)]="editForm.houseNumber" />
+                  </div>
+                </div>
+                <div class="form-row-2">
+                  <div class="form-group flex-1">
+                    <label>PLZ</label>
+                    <input type="text" [(ngModel)]="editForm.postalCode" />
+                  </div>
+                  <div class="form-group flex-3">
+                    <label>Ort</label>
+                    <input type="text" [(ngModel)]="editForm.city" />
+                  </div>
+                </div>
 
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="editForm.isBWO" />
-                BWO (Behandlung ohne Verordnung)
-              </label>
+                <div class="form-divider"></div>
 
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="editForm.isActive" />
-                Aktiver Patient
-              </label>
+                <div class="form-group">
+                  <label>Notizen</label>
+                  <textarea [(ngModel)]="editForm.notes" rows="3" placeholder="Optionale Notizen..."></textarea>
+                </div>
 
-              <div class="form-actions">
-                <button class="btn-save" (click)="savePatient()" [disabled]="saving()">
-                  {{ saving() ? 'Speichern...' : 'Speichern' }}
-                </button>
-              </div>
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="editForm.isBWO" />
+                  BWO (Behandlung ohne Verordnung)
+                </label>
+
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="editForm.isActive" />
+                  Aktiver Patient
+                </label>
+
+                <div class="form-actions">
+                  <button class="btn-cancel" (click)="cancelEdit()">Abbrechen</button>
+                  <button class="btn-save" (click)="savePatient()" [disabled]="saving()">
+                    {{ saving() ? 'Speichern...' : 'Speichern' }}
+                  </button>
+                </div>
+              } @else {
+                <!-- Read-Only Mode -->
+                <div class="info-row">
+                  <label>Vorname</label>
+                  <span class="info-value">{{ patient()?.firstName || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Nachname</label>
+                  <span class="info-value">{{ patient()?.lastName || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Geburtsdatum</label>
+                  <span class="info-value">{{ patient()?.dateOfBirth ? formatDateDE(patient()?.dateOfBirth) : '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>E-Mail</label>
+                  <span class="info-value">{{ patient()?.email || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Telefon</label>
+                  <span class="info-value">{{ patient()?.telefon || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Versicherung</label>
+                  <span class="info-value">{{ patient()?.insuranceType || '-' }}</span>
+                </div>
+
+                <div class="form-divider"></div>
+                <h3>Adresse</h3>
+
+                <div class="info-row">
+                  <label>Straße / Hausnr.</label>
+                  <span class="info-value">{{ getAddressLine1() }}</span>
+                </div>
+                <div class="info-row">
+                  <label>PLZ / Ort</label>
+                  <span class="info-value">{{ getAddressLine2() }}</span>
+                </div>
+
+                <div class="form-divider"></div>
+
+                <div class="info-row">
+                  <label>Notizen</label>
+                  <span class="info-value notes-text">{{ patient()?.notes || '-' }}</span>
+                </div>
+
+                <div class="info-row">
+                  <label>BWO</label>
+                  <span class="info-value">{{ patient()?.isBWO ? 'Ja' : 'Nein' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Status</label>
+                  <span class="info-value" [class.status-active]="patient()?.isActive" [class.status-inactive]="!patient()?.isActive">
+                    {{ patient()?.isActive ? 'Aktiv' : 'Inaktiv' }}
+                  </span>
+                </div>
+
+                <div class="form-divider"></div>
+
+                <div class="delete-section">
+                  <button class="btn-delete-subtle" (click)="confirmDeletePatient()">🗑️ Patient löschen</button>
+                </div>
+              }
             </div>
           </div>
 
@@ -109,6 +179,9 @@ import { ToastService } from '../../core/services/toast.service';
             <div class="card-header">
               <h2>Termine</h2>
               <span class="result-count">{{ filteredAppointments().length }}</span>
+              <button class="btn-print" (click)="openPrintModal()" title="Termine drucken">
+                🖨️ Drucken
+              </button>
             </div>
 
             <!-- Filter Row -->
@@ -190,6 +263,69 @@ import { ToastService } from '../../core/services/toast.service';
         </div>
       } @else {
         <div class="error">Patient nicht gefunden</div>
+      }
+
+      <!-- Print Appointments Modal -->
+      @if (showPrintModal) {
+        <div class="modal-overlay" (click)="showPrintModal = false">
+          <div class="modal modal-wide" (click)="$event.stopPropagation()">
+            <h2>🖨️ Termine drucken</h2>
+            <p class="modal-desc">Wählen Sie die Termine aus, die gedruckt werden sollen.</p>
+
+            <div class="print-filter-row">
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="printOnlyUpcoming" (change)="updatePrintSelection()" />
+                Nur kommende Termine
+              </label>
+              <button class="btn-link" (click)="selectAllForPrint()">Alle auswählen</button>
+              <button class="btn-link" (click)="deselectAllForPrint()">Keine auswählen</button>
+            </div>
+
+            <div class="print-appointment-list">
+              @for (apt of printableAppointments(); track apt.id) {
+                <label class="print-apt-item" [class.past]="isPastAppointment(apt.date)">
+                  <input type="checkbox" [(ngModel)]="selectedForPrint[apt.id]" />
+                  <span class="apt-date">{{ formatDateDE(apt.date) }}</span>
+                  <span class="apt-time">{{ formatTime(apt.startTime) }} Uhr</span>
+                  <span class="apt-therapist">{{ apt.therapistName }}</span>
+                </label>
+              }
+              @if (printableAppointments().length === 0) {
+                <div class="empty-state">Keine druckbaren Termine gefunden</div>
+              }
+            </div>
+
+            <div class="print-summary">
+              {{ countSelectedForPrint() }} Termine ausgewählt
+            </div>
+
+            <div class="modal-actions">
+              <button class="btn-cancel" (click)="showPrintModal = false">Abbrechen</button>
+              <button class="btn-print-action" (click)="printSelectedAppointments()" [disabled]="countSelectedForPrint() === 0">
+                🖨️ Drucken ({{ countSelectedForPrint() }})
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Delete Confirmation Modal -->
+      @if (showDeleteModal) {
+        <div class="modal-overlay" (click)="showDeleteModal = false">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <h2>Patient löschen?</h2>
+            <p class="modal-warning">
+              Möchten Sie <strong>{{ patient()?.fullName }}</strong> wirklich unwiderruflich löschen?
+            </p>
+            <p class="modal-hint">
+              Hinweis: Normalerweise sollten Patienten auf "Inaktiv" gesetzt werden, um die Terminhistorie zu erhalten.
+            </p>
+            <div class="modal-actions">
+              <button class="btn-cancel" (click)="showDeleteModal = false">Abbrechen</button>
+              <button class="btn-danger" (click)="deletePatient()">Endgültig löschen</button>
+            </div>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -279,6 +415,60 @@ import { ToastService } from '../../core/services/toast.service';
     .status-cancelled { background: #FEE2E2; color: #991B1B; }
     .status-completed { background: #E5E7EB; color: #374151; }
     .status-no_show { background: #FEF3C7; color: #92400E; }
+
+    /* Edit Toggle Button */
+    .btn-edit-toggle { background: none; border: 1px solid #D1D5DB; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; color: #6B7280; }
+    .btn-edit-toggle:hover { background: #F3F4F6; color: #374151; border-color: #9CA3AF; }
+
+    /* Read-Only Info Rows */
+    .info-row { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.25rem 0; }
+    .info-row label { font-size: 0.7rem; color: #6B7280; font-weight: 500; }
+    .info-value { font-size: 0.85rem; color: #111827; }
+    .info-value.notes-text { white-space: pre-wrap; color: #6B7280; font-size: 0.8rem; }
+    .info-value.status-active { color: #059669; font-weight: 500; }
+    .info-value.status-inactive { color: #DC2626; font-weight: 500; }
+
+    /* Form Actions with Cancel */
+    .form-actions { padding-top: 0.5rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .btn-cancel { padding: 0.45rem 1rem; background: white; color: #6B7280; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+    .btn-cancel:hover { background: #F3F4F6; }
+
+    /* Delete Section */
+    .delete-section { margin-top: auto; padding-top: 1rem; }
+    .btn-delete-subtle { background: none; border: none; color: #9CA3AF; padding: 0.25rem 0; cursor: pointer; font-size: 0.7rem; }
+    .btn-delete-subtle:hover { color: #6B7280; text-decoration: underline; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .modal { background: white; border-radius: 12px; padding: 1.5rem; width: 100%; max-width: 420px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .modal.modal-wide { max-width: 560px; }
+    .modal h2 { margin: 0 0 1rem 0; color: #111827; font-size: 1.15rem; }
+    .modal-desc { color: #6B7280; margin: 0 0 1rem 0; font-size: 0.8rem; }
+    .modal-warning { color: #374151; margin: 0 0 0.5rem 0; font-size: 0.875rem; }
+    .modal-hint { color: #6B7280; margin: 0 0 1.25rem 0; font-size: 0.8rem; background: #FEF3C7; padding: 0.5rem 0.75rem; border-radius: 6px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .btn-danger { padding: 0.45rem 1rem; background: #DC2626; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+    .btn-danger:hover { background: #B91C1C; }
+
+    /* Print Button & Modal */
+    .btn-print { margin-left: auto; padding: 0.35rem 0.75rem; background: #F97316; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 500; }
+    .btn-print:hover { background: #EA580C; }
+    .print-filter-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .btn-link { background: none; border: none; color: #3B82F6; cursor: pointer; font-size: 0.75rem; padding: 0; }
+    .btn-link:hover { text-decoration: underline; }
+    .print-appointment-list { max-height: 300px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 8px; margin-bottom: 0.75rem; }
+    .print-apt-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #F3F4F6; cursor: pointer; font-size: 0.8rem; }
+    .print-apt-item:last-child { border-bottom: none; }
+    .print-apt-item:hover { background: #F9FAFB; }
+    .print-apt-item.past { color: #9CA3AF; }
+    .print-apt-item input { accent-color: #F97316; }
+    .apt-date { min-width: 80px; font-weight: 500; }
+    .apt-time { min-width: 60px; color: #6B7280; }
+    .apt-therapist { flex: 1; color: #6B7280; text-align: right; }
+    .print-summary { font-size: 0.75rem; color: #6B7280; text-align: right; margin-bottom: 1rem; }
+    .btn-print-action { padding: 0.45rem 1rem; background: #F97316; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+    .btn-print-action:hover { background: #EA580C; }
+    .btn-print-action:disabled { background: #FDBA74; cursor: not-allowed; }
   `]
 })
 export class PatientDetailComponent implements OnInit {
@@ -287,12 +477,18 @@ export class PatientDetailComponent implements OnInit {
   private patientService = inject(PatientService);
   private appointmentService = inject(AppointmentService);
   private toastService = inject(ToastService);
+  private printService = inject(PrintService);
 
   patient = signal<Patient | null>(null);
   appointments = signal<Appointment[]>([]);
   loading = signal(true);
   loadingAppointments = signal(true);
   saving = signal(false);
+  editMode = signal(false);
+  showDeleteModal = false;
+  showPrintModal = false;
+  printOnlyUpcoming = true;
+  selectedForPrint: { [key: number]: boolean } = {};
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   filterStatus = '';
@@ -399,12 +595,67 @@ export class PatientDetailComponent implements OnInit {
         this.populateForm(updated);
         this.saving.set(false);
         this.toastService.show('Patient gespeichert', 'success');
+        this.editMode.set(false);
       },
       error: () => {
         this.saving.set(false);
         this.toastService.show('Fehler beim Speichern', 'error');
       }
     });
+  }
+
+  toggleEditMode(): void {
+    const p = this.patient();
+    if (p) {
+      this.populateForm(p);
+    }
+    this.editMode.set(true);
+  }
+
+  cancelEdit(): void {
+    const p = this.patient();
+    if (p) {
+      this.populateForm(p);
+    }
+    this.editMode.set(false);
+  }
+
+  confirmDeletePatient(): void {
+    this.showDeleteModal = true;
+  }
+
+  deletePatient(): void {
+    const p = this.patient();
+    if (!p) return;
+
+    this.patientService.delete(p.id).subscribe({
+      next: () => {
+        this.toastService.show('Patient gelöscht', 'success');
+        this.router.navigate(['/dashboard/patients']);
+      },
+      error: () => {
+        this.toastService.show('Fehler beim Löschen', 'error');
+      }
+    });
+    this.showDeleteModal = false;
+  }
+
+  getAddressLine1(): string {
+    const p = this.patient();
+    if (!p) return '-';
+    const street = p.street || '';
+    const house = p.houseNumber || '';
+    if (!street && !house) return '-';
+    return `${street} ${house}`.trim();
+  }
+
+  getAddressLine2(): string {
+    const p = this.patient();
+    if (!p) return '-';
+    const plz = p.postalCode || '';
+    const city = p.city || '';
+    if (!plz && !city) return '-';
+    return `${plz} ${city}`.trim();
   }
 
   loadAppointments(patientId: number): void {
@@ -453,6 +704,69 @@ export class PatientDetailComponent implements OnInit {
   navigateToDay(dateStr: string): void {
     const date = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.substring(0, 10);
     this.router.navigate(['/dashboard/calendar'], { queryParams: { date } });
+  }
+
+  // ==================== Print Methods ====================
+
+  printableAppointments = computed(() => {
+    let apts = this.appointments().filter(a => a.status !== 'CANCELLED');
+    if (this.printOnlyUpcoming) {
+      const today = new Date().toISOString().split('T')[0];
+      apts = apts.filter(a => a.date >= today);
+    }
+    return apts.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
+  });
+
+  openPrintModal(): void {
+    this.printOnlyUpcoming = true;
+    this.selectedForPrint = {};
+    this.selectAllForPrint();
+    this.showPrintModal = true;
+  }
+
+  updatePrintSelection(): void {
+    this.selectedForPrint = {};
+    this.selectAllForPrint();
+  }
+
+  selectAllForPrint(): void {
+    this.printableAppointments().forEach(apt => {
+      this.selectedForPrint[apt.id] = true;
+    });
+  }
+
+  deselectAllForPrint(): void {
+    this.selectedForPrint = {};
+  }
+
+  countSelectedForPrint(): number {
+    return Object.values(this.selectedForPrint).filter(v => v).length;
+  }
+
+  isPastAppointment(dateStr: string): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    const date = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+    return date < today;
+  }
+
+  printSelectedAppointments(): void {
+    const patientName = this.patient()?.fullName || 'Patient';
+    const selectedApts = this.printableAppointments()
+      .filter(apt => this.selectedForPrint[apt.id])
+      .map(apt => ({
+        id: apt.id,
+        date: apt.date,
+        startTime: apt.startTime,
+        endTime: apt.endTime,
+        patientName: apt.patientName || patientName,
+        therapistName: apt.therapistName || '',
+        status: apt.status
+      } as PrintableAppointment));
+
+    if (selectedApts.length > 0) {
+      this.printService.printAppointments(patientName, selectedApts);
+      this.showPrintModal = false;
+    }
   }
 
   getStatusLabel(status: string): string {

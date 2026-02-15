@@ -1,11 +1,12 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
-import { AppointmentService, Appointment } from '../../data-access/api/appointment.service';
+import { AppointmentService, Appointment, PageResponse, AppointmentExtendedPageParams } from '../../data-access/api/appointment.service';
 import { AbsenceService, Absence, CreateAbsenceRequest } from '../../data-access/api/absence.service';
 import { ToastService } from '../../core/services/toast.service';
+import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from 'rxjs';
 
 @Component({
   selector: 'app-therapist-detail',
@@ -58,7 +59,7 @@ import { ToastService } from '../../core/services/toast.service';
           <div class="card appointments-card">
             <div class="card-header">
               <h2>Termine</h2>
-              <span class="result-count">{{ filteredAppointments().length }}</span>
+              <span class="result-count">{{ totalAppointments() }}</span>
               <div class="filter-tabs">
                 <button
                   [class.active]="appointmentFilter() === 'upcoming'"
@@ -95,25 +96,42 @@ import { ToastService } from '../../core/services/toast.service';
               </div>
             </div>
 
+            <div class="search-bar">
+              <input
+                type="text"
+                placeholder="Patient suchen..."
+                [value]="appointmentSearchTerm()"
+                (input)="onAppointmentSearchInput($event)"
+                class="search-input"
+              />
+            </div>
+
             @if (loadingAppointments()) {
-              <div class="loading-inline">Termine werden geladen...</div>
-            } @else if (filteredAppointments().length === 0) {
+              <div class="loading-inline">
+                <div class="loading-spinner-small"></div>
+                Termine werden geladen...
+              </div>
+            } @else if (serverAppointments().length === 0) {
               <div class="empty-state">Keine Termine gefunden</div>
             } @else {
               <div class="table-wrapper">
                 <table class="apt-table">
                   <thead>
                     <tr>
-                      <th>Datum</th>
+                      <th class="sortable" (click)="sortAppointments('date')">
+                        Datum <span class="sort-icon">{{ appointmentSortField() === 'date' ? (appointmentSortDir() === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
                       <th>Zeit</th>
-                      <th>Patient</th>
+                      <th class="sortable" (click)="sortAppointments('patient')">
+                        Patient <span class="sort-icon">{{ appointmentSortField() === 'patient' ? (appointmentSortDir() === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
                       <th>Typ</th>
                       <th>Status</th>
                       <th>Kommentar</th>
                     </tr>
                   </thead>
                   <tbody>
-                    @for (apt of filteredAppointments(); track apt.id) {
+                    @for (apt of serverAppointments(); track apt.id) {
                       <tr [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'"
                           (click)="navigateToDay(apt.date)">
@@ -140,6 +158,15 @@ import { ToastService } from '../../core/services/toast.service';
                     }
                   </tbody>
                 </table>
+              </div>
+              <!-- Pagination Footer -->
+              <div class="pagination-footer">
+                <span class="pagination-info">{{ paginationStart() }}-{{ paginationEnd() }} von {{ totalAppointments() }}</span>
+                <div class="pagination-buttons">
+                  <button [disabled]="appointmentPage() === 0 || loadingAppointments()" (click)="previousAppointmentPage()" class="btn-pagination">←</button>
+                  <span class="page-number">{{ appointmentPage() + 1 }} / {{ totalAppointmentPages() || 1 }}</span>
+                  <button [disabled]="appointmentPage() >= totalAppointmentPages() - 1 || loadingAppointments()" (click)="nextAppointmentPage()" class="btn-pagination">→</button>
+                </div>
               </div>
             }
           </div>
@@ -373,14 +400,33 @@ import { ToastService } from '../../core/services/toast.service';
     .filter-tabs.type-filter { margin-left: 0.5rem; }
     .filter-tabs.type-filter button.active { background: #8B5CF6; border-color: #8B5CF6; }
 
-    .loading-inline, .empty-state { text-align: center; padding: 2rem; color: #6B7280; font-size: 0.85rem; }
+    .loading-inline, .empty-state { text-align: center; padding: 2rem; color: #6B7280; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+    .loading-spinner-small { width: 16px; height: 16px; border: 2px solid #E5E7EB; border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Pagination */
+    .pagination-footer { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-top: 1px solid #E5E7EB; background: #F9FAFB; font-size: 0.75rem; }
+    .pagination-info { color: #6B7280; }
+    .pagination-buttons { display: flex; align-items: center; gap: 0.5rem; }
+    .btn-pagination { background: white; border: 1px solid #D1D5DB; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .btn-pagination:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-pagination:not(:disabled):hover { background: #F3F4F6; }
+    .page-number { color: #374151; font-weight: 500; min-width: 60px; text-align: center; }
 
     /* Table Styles */
     .table-wrapper { flex: 1; overflow: auto; }
     .apt-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     .apt-table thead { position: sticky; top: 0; z-index: 1; }
     .apt-table th { background: #F9FAFB; padding: 0.5rem 0.6rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #E5E7EB; white-space: nowrap; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .apt-table th.sortable { cursor: pointer; user-select: none; }
+    .apt-table th.sortable:hover { background: #F3F4F6; }
+    .sort-icon { margin-left: 4px; color: #9CA3AF; }
     .apt-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F3F4F6; color: #374151; vertical-align: middle; }
+
+    /* Search Bar */
+    .search-bar { padding: 0.75rem 1rem; border-bottom: 1px solid #E5E7EB; }
+    .search-input { width: 100%; max-width: 300px; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.8rem; }
+    .search-input:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
     .apt-table tbody tr { cursor: pointer; transition: background 0.1s; }
     .apt-table tbody tr:hover { background: #F0F7FF; }
     .apt-table tbody tr.cancelled { opacity: 0.5; }
@@ -422,7 +468,7 @@ import { ToastService } from '../../core/services/toast.service';
     .type-badge.special { background: #FEF3C7; color: #92400E; }
 
     /* Action Buttons */
-    .btn-edit { background: none; border: 1px solid #E5E7EB; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; color: #6B7280; }
+    .btn-edit { background: none; border: 1px solid #E5E7EB; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; color: #6B7280; margin-left: auto; }
     .btn-edit:hover { background: #F3F4F6; color: #374151; }
     .btn-add { background: #3B82F6; color: white; border: none; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.7rem; font-weight: 500; }
     .btn-add:hover { background: #2563EB; }
@@ -560,7 +606,7 @@ import { ToastService } from '../../core/services/toast.service';
     }
   `]
 })
-export class TherapistDetailComponent implements OnInit {
+export class TherapistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private therapistService = inject(TherapistService);
@@ -568,8 +614,11 @@ export class TherapistDetailComponent implements OnInit {
   private absenceService = inject(AbsenceService);
   private toast = inject(ToastService);
 
+  // Cleanup
+  private destroy$ = new Subject<void>();
+  private therapistId: number | null = null;
+
   therapist = signal<Therapist | null>(null);
-  appointments = signal<Appointment[]>([]);
   absences = signal<Absence[]>([]);
   loading = signal(true);
   loadingAppointments = signal(true);
@@ -577,6 +626,32 @@ export class TherapistDetailComponent implements OnInit {
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   absenceFilter = signal<'recurring' | 'special' | 'all'>('all');
+
+  // Server-side pagination for appointments
+  private appointmentServerPage = signal<PageResponse<Appointment> | null>(null);
+  appointmentPage = signal(0);
+  private readonly PAGE_SIZE = 50;
+
+  // Search and sorting for appointments
+  appointmentSearchTerm = signal('');
+  private appointmentSearchSubject = new Subject<string>();
+  appointmentSortField = signal<'date' | 'patient'>('date');
+  appointmentSortDir = signal<'asc' | 'desc'>('asc');
+
+  // Computed from server response
+  serverAppointments = computed(() => this.appointmentServerPage()?.content || []);
+  totalAppointments = computed(() => this.appointmentServerPage()?.totalElements || 0);
+  totalAppointmentPages = computed(() => this.appointmentServerPage()?.totalPages || 0);
+  paginationStart = computed(() => {
+    const page = this.appointmentServerPage();
+    if (!page || page.empty) return 0;
+    return page.number * page.size + 1;
+  });
+  paginationEnd = computed(() => {
+    const page = this.appointmentServerPage();
+    if (!page || page.empty) return 0;
+    return page.number * page.size + page.numberOfElements;
+  });
 
   // Modal states
   showEditTherapistModal = false;
@@ -605,37 +680,6 @@ export class TherapistDetailComponent implements OnInit {
     reason: ''
   };
 
-  filteredAppointments = computed(() => {
-    const apts = this.appointments();
-    const filter = this.appointmentFilter();
-    const typeFilter = this.appointmentTypeFilter();
-    const today = new Date().toISOString().split('T')[0];
-
-    let result = apts;
-
-    // Time filter
-    switch (filter) {
-      case 'upcoming':
-        result = result.filter(a => a.date >= today && a.status !== 'CANCELLED');
-        break;
-      case 'past':
-        result = result.filter(a => a.date < today);
-        break;
-    }
-
-    // Type filter
-    switch (typeFilter) {
-      case 'series':
-        result = result.filter(a => a.createdBySeriesAppointment);
-        break;
-      case 'single':
-        result = result.filter(a => !a.createdBySeriesAppointment);
-        break;
-    }
-
-    return result;
-  });
-
   filteredAbsences = computed(() => {
     const abs = this.absences();
     const filter = this.absenceFilter();
@@ -652,12 +696,29 @@ export class TherapistDetailComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    // Setup debounced search for appointments
+    this.appointmentSearchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntil(this.destroy$)
+    ).subscribe(term => {
+      this.appointmentSearchTerm.set(term);
+      this.appointmentPage.set(0);
+      this.fetchAppointments();
+    });
+
     const id = Number(this.route.snapshot.paramMap.get('id'));
     if (id) {
+      this.therapistId = id;
       this.loadTherapist(id);
-      this.loadAppointments(id);
+      this.fetchAppointments();
       this.loadAbsences(id);
     }
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadTherapist(id: number): void {
@@ -672,18 +733,56 @@ export class TherapistDetailComponent implements OnInit {
     });
   }
 
-  loadAppointments(therapistId: number): void {
-    this.appointmentService.getByTherapist(therapistId).subscribe({
-      next: (appointments) => {
-        // Sort by date descending
-        appointments.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
-        this.appointments.set(appointments);
-        this.loadingAppointments.set(false);
-      },
-      error: () => {
-        this.loadingAppointments.set(false);
-      }
+  /**
+   * Fetch appointments from server with current filters, search and pagination
+   */
+  fetchAppointments(): void {
+    if (!this.therapistId) return;
+
+    this.loadingAppointments.set(true);
+
+    const timeFilter = this.appointmentFilter();
+    const typeFilter = this.appointmentTypeFilter();
+
+    // Determine sort direction: use user selection, but default to desc for past filter
+    let sortDir = this.appointmentSortDir();
+    if (this.appointmentSortField() === 'date' && timeFilter === 'past') {
+      sortDir = 'desc';
+    }
+
+    const params: AppointmentExtendedPageParams = {
+      page: this.appointmentPage(),
+      size: this.PAGE_SIZE,
+      sortBy: this.appointmentSortField(),
+      sortDir: sortDir,
+      therapistId: this.therapistId,
+      timeFilter: timeFilter === 'all' ? undefined : (timeFilter as 'upcoming' | 'past'),
+      appointmentType: typeFilter === 'all' ? undefined : (typeFilter as 'series' | 'single'),
+      search: this.appointmentSearchTerm() || undefined
+    };
+
+    this.appointmentService.getPaginatedExtended(params).pipe(
+      finalize(() => this.loadingAppointments.set(false)),
+      takeUntil(this.destroy$)
+    ).subscribe({
+      next: (response) => this.appointmentServerPage.set(response),
+      error: () => this.toast.error('Fehler beim Laden der Termine')
     });
+  }
+
+  // Pagination methods
+  previousAppointmentPage(): void {
+    if (this.appointmentPage() > 0) {
+      this.appointmentPage.set(this.appointmentPage() - 1);
+      this.fetchAppointments();
+    }
+  }
+
+  nextAppointmentPage(): void {
+    if (this.appointmentPage() < this.totalAppointmentPages() - 1) {
+      this.appointmentPage.set(this.appointmentPage() + 1);
+      this.fetchAppointments();
+    }
   }
 
   loadAbsences(therapistId: number): void {
@@ -700,10 +799,36 @@ export class TherapistDetailComponent implements OnInit {
 
   setAppointmentFilter(filter: 'upcoming' | 'past' | 'all'): void {
     this.appointmentFilter.set(filter);
+    this.appointmentPage.set(0);
+    this.fetchAppointments();
   }
 
   setAppointmentTypeFilter(filter: 'all' | 'series' | 'single'): void {
     this.appointmentTypeFilter.set(filter);
+    this.appointmentPage.set(0);
+    this.fetchAppointments();
+  }
+
+  /**
+   * Handle search input with debounce
+   */
+  onAppointmentSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.appointmentSearchSubject.next(value);
+  }
+
+  /**
+   * Sort appointments by column
+   */
+  sortAppointments(field: 'date' | 'patient'): void {
+    if (this.appointmentSortField() === field) {
+      this.appointmentSortDir.set(this.appointmentSortDir() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.appointmentSortField.set(field);
+      this.appointmentSortDir.set('asc');
+    }
+    this.appointmentPage.set(0);
+    this.fetchAppointments();
   }
 
   setAbsenceFilter(filter: 'recurring' | 'special' | 'all'): void {

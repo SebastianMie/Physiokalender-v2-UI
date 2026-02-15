@@ -2,14 +2,7 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ToastService } from '../../core/services/toast.service';
-
-interface OpeningHour {
-  day: string;
-  dayIndex: number;
-  isOpen: boolean;
-  openTime: string;
-  closeTime: string;
-}
+import { PracticeSettingsService, OpeningHour } from '../../core/services/practice-settings.service';
 
 interface Holiday {
   id: number;
@@ -252,23 +245,27 @@ export class SettingsComponent implements OnInit {
   holidayForm = { name: '', date: '', recurring: true };
   private nextHolidayId = 1;
 
-  constructor(private toast: ToastService) {}
+  constructor(
+    private toast: ToastService,
+    private practiceSettings: PracticeSettingsService
+  ) {}
 
   ngOnInit() {
-    this.initOpeningHours();
+    this.loadOpeningHours();
     this.loadHolidays();
+    this.loadGeneralSettings();
   }
 
-  initOpeningHours() {
-    const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-    const hours: OpeningHour[] = days.map((day, index) => ({
-      day,
-      dayIndex: index,
-      isOpen: index < 5, // Mon-Fri open by default
-      openTime: '08:00',
-      closeTime: '18:00'
-    }));
+  loadOpeningHours() {
+    const hours = this.practiceSettings.getOpeningHours();
     this.openingHours.set(hours);
+  }
+
+  loadGeneralSettings() {
+    const settings = this.practiceSettings.getSettings();
+    this.defaultAppointmentDuration = settings.defaultAppointmentDuration;
+    this.calendarStartTime = settings.calendarStartTime;
+    this.calendarEndTime = settings.calendarEndTime;
   }
 
   loadHolidays() {
@@ -297,7 +294,7 @@ export class SettingsComponent implements OnInit {
   }
 
   saveOpeningHours() {
-    localStorage.setItem('physio_opening_hours', JSON.stringify(this.openingHours()));
+    this.practiceSettings.saveOpeningHours(this.openingHours());
     this.toast.success('Öffnungszeiten gespeichert');
   }
 
@@ -347,12 +344,11 @@ export class SettingsComponent implements OnInit {
   }
 
   saveGeneralSettings() {
-    const settings = {
+    this.practiceSettings.saveSettings({
       defaultAppointmentDuration: this.defaultAppointmentDuration,
       calendarStartTime: this.calendarStartTime,
       calendarEndTime: this.calendarEndTime
-    };
-    localStorage.setItem('physio_settings', JSON.stringify(settings));
+    });
     this.toast.success('Einstellungen gespeichert');
   }
 

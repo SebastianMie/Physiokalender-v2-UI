@@ -24,34 +24,82 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
       } @else if (therapist()) {
         <div class="content-grid">
           <!-- Therapist Info Card -->
-          <div class="card info-card">
-            <div class="card-header">
+          <div class="card form-card">
+            <div class="card-title-row">
               <h2>Stammdaten</h2>
-              <button class="btn-edit" (click)="openEditTherapistModal()">✏️ Bearbeiten</button>
+              @if (!editMode()) {
+                <button class="btn-edit-toggle" (click)="toggleEditMode()">✏️ Bearbeiten</button>
+              }
             </div>
-            <div class="info-grid">
-              <div class="info-row">
-                <span class="label">Name:</span>
-                <span class="value">{{ therapist()?.fullName }}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">E-Mail:</span>
-                <span class="value">{{ therapist()?.email || '-' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Telefon:</span>
-                <span class="value">{{ therapist()?.telefon || '-' }}</span>
-              </div>
-              <div class="info-row">
-                <span class="label">Status:</span>
-                <span class="value" [class.active]="therapist()?.isActive" [class.inactive]="!therapist()?.isActive">
-                  {{ therapist()?.isActive ? 'Aktiv' : 'Inaktiv' }}
-                </span>
-              </div>
-              <div class="info-row">
-                <span class="label">Aktiv seit:</span>
-                <span class="value">{{ therapist()?.activeSince || '-' }}</span>
-              </div>
+
+            <div class="form-section">
+              @if (editMode()) {
+                <!-- Edit Mode -->
+                <div class="form-group">
+                  <label>Vorname</label>
+                  <input type="text" [(ngModel)]="therapistForm.firstName" />
+                </div>
+                <div class="form-group">
+                  <label>Nachname</label>
+                  <input type="text" [(ngModel)]="therapistForm.lastName" />
+                </div>
+                <div class="form-group">
+                  <label>E-Mail</label>
+                  <input type="email" [(ngModel)]="therapistForm.email" />
+                </div>
+                <div class="form-group">
+                  <label>Telefon</label>
+                  <input type="tel" [(ngModel)]="therapistForm.telefon" />
+                </div>
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="therapistForm.isActive" />
+                  Aktiv
+                </label>
+
+                <div class="form-divider"></div>
+
+                <div class="form-actions">
+                  <button class="btn-cancel" (click)="cancelEdit()">Abbrechen</button>
+                  <button class="btn-save" (click)="saveTherapist()" [disabled]="saving()">
+                    {{ saving() ? 'Speichern...' : 'Speichern' }}
+                  </button>
+                </div>
+              } @else {
+                <!-- Read-Only Mode -->
+                <div class="info-row">
+                  <label>Vorname</label>
+                  <span class="info-value">{{ therapist()?.firstName || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Nachname</label>
+                  <span class="info-value">{{ therapist()?.lastName || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>E-Mail</label>
+                  <span class="info-value">{{ therapist()?.email || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Telefon</label>
+                  <span class="info-value">{{ therapist()?.telefon || '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Status</label>
+                  <span class="info-value" [class.status-active]="therapist()?.isActive" [class.status-inactive]="!therapist()?.isActive">
+                    {{ therapist()?.isActive ? 'Aktiv' : 'Inaktiv' }}
+                  </span>
+                </div>
+
+                <div class="form-divider"></div>
+
+                <div class="info-row">
+                  <label>Erstellt am</label>
+                  <span class="info-value">{{ therapist()?.createdAt ? formatDateTimeDE(therapist()!.createdAt!) : '-' }}</span>
+                </div>
+                <div class="info-row">
+                  <label>Geändert am</label>
+                  <span class="info-value">{{ therapist()?.modifiedAt ? formatDateTimeDE(therapist()!.modifiedAt!) : '-' }}</span>
+                </div>
+              }
             </div>
           </div>
 
@@ -250,41 +298,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
         <div class="error">Therapeut nicht gefunden</div>
       }
 
-      <!-- Edit Therapist Modal -->
-      @if (showEditTherapistModal) {
-        <div class="modal-overlay" (click)="closeEditTherapistModal()">
-          <div class="modal" (click)="$event.stopPropagation()">
-            <h2>Stammdaten bearbeiten</h2>
-            <form (ngSubmit)="saveTherapist()">
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Vorname *</label>
-                  <input type="text" [(ngModel)]="therapistForm.firstName" name="firstName" required />
-                </div>
-                <div class="form-group">
-                  <label>Nachname *</label>
-                  <input type="text" [(ngModel)]="therapistForm.lastName" name="lastName" required />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>E-Mail</label>
-                <input type="email" [(ngModel)]="therapistForm.email" name="email" />
-              </div>
-              <div class="form-group">
-                <label>Telefon</label>
-                <input type="tel" [(ngModel)]="therapistForm.telefon" name="telefon" />
-              </div>
-              <div class="form-group checkbox-group">
-                <label><input type="checkbox" [(ngModel)]="therapistForm.isActive" name="isActive" /> Aktiv</label>
-              </div>
-              <div class="modal-actions">
-                <button type="button" class="btn-secondary" (click)="closeEditTherapistModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary">Speichern</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      }
+
 
       <!-- Absence Modal -->
       @if (showAbsenceModal) {
@@ -381,13 +395,33 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; }
     .card h2 { margin: 0; font-size: 1rem; color: #2563EB; }
 
-    /* Info Card */
+    /* Form Card */
+    .form-card { overflow-y: auto; }
+    .card-title-row { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
+    .form-section { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
+    .form-divider { height: 1px; background: #F3F4F6; margin: 0.25rem 0; }
+    .form-group { display: flex; flex-direction: column; gap: 0.2rem; }
+    .form-group label { font-size: 0.7rem; color: #6B7280; font-weight: 500; }
+    .form-group input, .form-group textarea { padding: 0.4rem 0.5rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.8rem; outline: none; color: #111827; background: white; font-family: inherit; }
+    .form-group input:focus, .form-group textarea:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.12); }
+    .checkbox-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: #374151; cursor: pointer; }
+    .checkbox-label input { accent-color: #3B82F6; }
+    .form-actions { padding-top: 0.5rem; display: flex; justify-content: space-between; }
+    .btn-save { padding: 0.45rem 1.25rem; background: #2563EB; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+    .btn-save:hover { background: #1D4ED8; }
+    .btn-save:disabled { opacity: 0.6; cursor: default; }
+    .btn-cancel { padding: 0.45rem 1rem; background: white; color: #6B7280; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
+    .btn-cancel:hover { background: #F3F4F6; }
+    .btn-edit-toggle { background: none; border: 1px solid #D1D5DB; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; color: #6B7280; }
+    .btn-edit-toggle:hover { background: #F3F4F6; color: #374151; border-color: #9CA3AF; }
+
+    /* Info Rows */
     .info-grid { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
-    .info-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
-    .label { color: #6B7280; }
-    .value { color: #111827; font-weight: 500; }
-    .value.active { color: #059669; }
-    .value.inactive { color: #DC2626; }
+    .info-row { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.25rem 0; }
+    .info-row label { font-size: 0.7rem; color: #6B7280; font-weight: 500; }
+    .info-value { font-size: 0.85rem; color: #111827; }
+    .info-value.status-active { color: #059669; font-weight: 500; }
+    .info-value.status-inactive { color: #DC2626; font-weight: 500; }
 
     /* Card Header */
     .card-header { display: flex; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
@@ -623,6 +657,8 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   loading = signal(true);
   loadingAppointments = signal(true);
   loadingAbsences = signal(true);
+  editMode = signal(false);
+  saving = signal(false);
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   absenceFilter = signal<'recurring' | 'special' | 'all'>('all');
@@ -654,7 +690,6 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   });
 
   // Modal states
-  showEditTherapistModal = false;
   showAbsenceModal = false;
   showDeleteAbsenceModal = false;
   editingAbsenceId: number | null = null;
@@ -879,6 +914,13 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
     return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
   }
 
+  formatDateTimeDE(dateStr: string): string {
+    const d = new Date(dateStr);
+    const date = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return `${date} ${time}`;
+  }
+
   formatTimeShort(timeStr: string): string {
     if (!timeStr) return '';
     // Handle ISO timestamp format (2024-01-15T09:00:00)
@@ -892,7 +934,7 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   }
 
   // === Therapist Edit Methods ===
-  openEditTherapistModal(): void {
+  toggleEditMode(): void {
     const t = this.therapist();
     if (t) {
       this.therapistForm = {
@@ -902,25 +944,47 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
         telefon: t.telefon || '',
         isActive: t.isActive ?? true
       };
-      this.showEditTherapistModal = true;
+      this.editMode.set(true);
     }
   }
 
-  closeEditTherapistModal(): void {
-    this.showEditTherapistModal = false;
+  cancelEdit(): void {
+    const t = this.therapist();
+    if (t) {
+      this.therapistForm = {
+        firstName: t.firstName || '',
+        lastName: t.lastName || '',
+        email: t.email || '',
+        telefon: t.telefon || '',
+        isActive: t.isActive ?? true
+      };
+    }
+    this.editMode.set(false);
   }
 
   saveTherapist(): void {
     const t = this.therapist();
     if (!t) return;
 
+    this.saving.set(true);
     this.therapistService.update(t.id, this.therapistForm).subscribe({
-      next: () => {
+      next: (updated) => {
+        this.therapist.set(updated);
+        this.therapistForm = {
+          firstName: updated.firstName || '',
+          lastName: updated.lastName || '',
+          email: updated.email || '',
+          telefon: updated.telefon || '',
+          isActive: updated.isActive ?? true
+        };
+        this.saving.set(false);
+        this.editMode.set(false);
         this.toast.success('Stammdaten aktualisiert');
-        this.loadTherapist(t.id);
-        this.closeEditTherapistModal();
       },
-      error: () => this.toast.error('Fehler beim Speichern')
+      error: () => {
+        this.saving.set(false);
+        this.toast.error('Fehler beim Speichern');
+      }
     });
   }
 

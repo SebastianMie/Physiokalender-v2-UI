@@ -12,6 +12,8 @@ export interface Therapist {
   activeSince: string | null;
   activeUntil: string | null;
   isActive: boolean;
+  createdAt: string | null;
+  modifiedAt: string | null;
 }
 
 export interface CreateTherapistRequest {

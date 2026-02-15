@@ -11,6 +11,14 @@ import { ToastService } from '../../core/services/toast.service';
 import { AppointmentCacheService } from '../../core/services/appointment-cache.service';
 import { PracticeSettingsService } from '../../core/services/practice-settings.service';
 import { PrintService, PrintableAppointment } from '../../core/services/print.service';
+import { AbsenceService, Absence } from '../../data-access/api/absence.service';
+
+interface ApplicableAbsence {
+  absence: Absence;
+  startTime: string;
+  endTime: string;
+  isFullDay: boolean;
+}
 
 interface TimeSlot {
   time: string;
@@ -21,6 +29,7 @@ interface TimeSlot {
 interface TherapistColumn {
   therapist: Therapist;
   appointments: Appointment[];
+  absences: ApplicableAbsence[];
 }
 
 interface NewAppointmentForm {
@@ -176,6 +185,24 @@ interface NewPatientForm {
                     </div>
 
                     <div class="drag-handle" cdkDragHandle>&#8942;&#8942;</div>
+                  </div>
+                }
+
+                <!-- Absence Blockers -->
+                @for (absenceEntry of col.absences; track absenceEntry.absence.id) {
+                  <div
+                    class="absence-blocker"
+                    [style.top.px]="getAbsenceTop(absenceEntry)"
+                    [style.height.px]="getAbsenceHeight(absenceEntry)"
+                    [class.full-day]="absenceEntry.isFullDay"
+                    [title]="absenceEntry.absence.reason || 'Abwesend'">
+                    <div class="absence-content">
+                      <span class="absence-icon">🚫</span>
+                      <span class="absence-label">{{ absenceEntry.absence.reason || 'Abwesend' }}</span>
+                      @if (!absenceEntry.isFullDay) {
+                        <span class="absence-time">{{ absenceEntry.startTime }} - {{ absenceEntry.endTime }}</span>
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -638,6 +665,14 @@ interface NewPatientForm {
     .patient-search-wrapper input.patient-selected { color: #111827; font-weight: 500; background: #F0FFF4; border-color: #86EFAC; padding-right: 2rem; }
     .input-clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: #E5E7EB; color: #6B7280; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; line-height: 1; }
     .input-clear-btn:hover { background: #FCA5A5; color: #991B1B; }
+
+    /* Absence Blockers */
+    .absence-blocker { position: absolute; left: 2px; right: 2px; background: repeating-linear-gradient(45deg, #FEE2E2, #FEE2E2 10px, #FECACA 10px, #FECACA 20px); border: 1px solid #F87171; border-radius: 4px; z-index: 1; opacity: 0.85; pointer-events: none; overflow: hidden; }
+    .absence-blocker.full-day { background: repeating-linear-gradient(45deg, #FEE2E2, #FEE2E2 10px, #FECACA 10px, #FECACA 20px); }
+    .absence-content { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 0.25rem; text-align: center; }
+    .absence-icon { font-size: 0.75rem; }
+    .absence-label { font-size: 0.6rem; font-weight: 500; color: #991B1B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .absence-time { font-size: 0.5rem; color: #B91C1C; }
   `]
 })
 export class DailyListComponent implements OnInit {
@@ -649,6 +684,7 @@ export class DailyListComponent implements OnInit {
   private appointmentCache = inject(AppointmentCacheService);
   private practiceSettings = inject(PracticeSettingsService);
   private printService = inject(PrintService);
+  private absenceService = inject(AbsenceService);
   private route = inject(ActivatedRoute);
 
   /** When embedded (e.g. on dashboard), hide view toggle and default to 'all' */
@@ -659,6 +695,7 @@ export class DailyListComponent implements OnInit {
   loading = signal(true);
   therapists = signal<Therapist[]>([]);
   appointments = signal<Appointment[]>([]);
+  allAbsences = signal<Absence[]>([]);
   viewMode = signal<'all' | 'single'>('all');
   selectedTherapistId = signal<number | null>(null);
   showConflictModal = signal(false);
@@ -724,7 +761,40 @@ export class DailyListComponent implements OnInit {
     return apts.filter(a => a.status !== 'CANCELLED').length;
   });
 
-  /** All therapist columns with their appointments */
+  /** Get absences that apply to the selected date for a therapist */
+  private getApplicableAbsences(therapistId: number): ApplicableAbsence[] {
+    const absences = this.allAbsences();
+    const selectedDate = this.selectedDate();
+    const dateStr = this.selectedDateStr();
+    const jsDay = selectedDate.getDay();
+    const weekdayMap: { [key: number]: string } = {
+      0: 'SUNDAY', 1: 'MONDAY', 2: 'TUESDAY', 3: 'WEDNESDAY',
+      4: 'THURSDAY', 5: 'FRIDAY', 6: 'SATURDAY'
+    };
+    const currentWeekday = weekdayMap[jsDay];
+
+    return absences
+      .filter(a => a.therapistId === therapistId)
+      .filter(a => {
+        if (a.absenceType === 'RECURRING') {
+          return a.weekday === currentWeekday;
+        } else {
+          // SPECIAL - check date range
+          if (!a.date) return false;
+          const startDate = a.date;
+          const endDate = a.endDate || a.date;
+          return dateStr >= startDate && dateStr <= endDate;
+        }
+      })
+      .map(a => ({
+        absence: a,
+        startTime: a.startTime || `${this.startHour.toString().padStart(2, '0')}:00`,
+        endTime: a.endTime || `${this.endHour.toString().padStart(2, '0')}:00`,
+        isFullDay: !a.startTime || !a.endTime
+      }));
+  }
+
+  /** All therapist columns with their appointments and absences */
   allColumns = computed<TherapistColumn[]>(() => {
     const therapists = this.therapists();
     const apts = this.appointments();
@@ -732,7 +802,8 @@ export class DailyListComponent implements OnInit {
       therapist,
       appointments: apts
         .filter(a => a.therapistId === therapist.id)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+      absences: this.getApplicableAbsences(therapist.id)
     }));
   });
 
@@ -807,6 +878,16 @@ export class DailyListComponent implements OnInit {
     this.patientService.getAll().subscribe({
       next: (patients) => this.allPatients.set(patients),
       error: () => {} // silently fail, will reload when dialog opens
+    });
+
+    // Load absences for all therapists
+    this.loadAbsences();
+  }
+
+  loadAbsences(): void {
+    this.absenceService.getAll().subscribe({
+      next: (absences) => this.allAbsences.set(absences || []),
+      error: () => {} // silently fail
     });
   }
 
@@ -921,6 +1002,23 @@ export class DailyListComponent implements OnInit {
     const endMinutes = parseInt(endParts[0], 10) * 60 + parseInt(endParts[1], 10);
     const duration = endMinutes - startMinutes;
     return Math.max((duration / this.slotMinutes) * this.slotHeight - 2, 14);
+  }
+
+  getAbsenceTop(absenceEntry: ApplicableAbsence): number {
+    const parts = absenceEntry.startTime.split(':');
+    const hour = parseInt(parts[0], 10);
+    const minute = parseInt(parts[1], 10);
+    const minutesFromStart = (hour - this.startHour) * 60 + minute;
+    return Math.max(0, (minutesFromStart / this.slotMinutes) * this.slotHeight);
+  }
+
+  getAbsenceHeight(absenceEntry: ApplicableAbsence): number {
+    const startParts = absenceEntry.startTime.split(':');
+    const endParts = absenceEntry.endTime.split(':');
+    const startMinutes = parseInt(startParts[0], 10) * 60 + parseInt(startParts[1], 10);
+    const endMinutes = parseInt(endParts[0], 10) * 60 + parseInt(endParts[1], 10);
+    const duration = endMinutes - startMinutes;
+    return Math.max((duration / this.slotMinutes) * this.slotHeight, 20);
   }
 
   formatTime(timeStr: string): string {

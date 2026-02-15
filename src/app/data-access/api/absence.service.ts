@@ -15,6 +15,7 @@ export interface Absence {
 }
 
 export interface CreateAbsenceRequest {
+  id?: number;
   therapistId: number;
   date?: string;
   endDate?: string;

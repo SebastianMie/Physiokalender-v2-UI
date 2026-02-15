@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { AbsenceService, Absence, CreateAbsenceRequest } from '../../data-access/api/absence.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { ToastService } from '../../core/services/toast.service';
 
@@ -21,7 +22,7 @@ import { ToastService } from '../../core/services/toast.service';
       <div class="filters">
         <div class="filter-group">
           <label>Therapeut:</label>
-          <select [(ngModel)]="selectedTherapistId" (change)="onFilterChange()">
+          <select [ngModel]="selectedTherapistId()" (ngModelChange)="selectedTherapistId.set($event)">
             <option [value]="null">Alle Therapeuten</option>
             @for (t of therapists(); track t.id) {
               <option [value]="t.id">{{ t.fullName }}</option>
@@ -38,6 +39,17 @@ import { ToastService } from '../../core/services/toast.service';
             <button [class.active]="timeFilter() === 'future'" (click)="setTimeFilter('future')">Zukünftig</button>
             <button [class.active]="timeFilter() === 'past'" (click)="setTimeFilter('past')">Vergangen</button>
             <button [class.active]="timeFilter() === 'all'" (click)="setTimeFilter('all')">Alle</button>
+          </div>
+        }
+        @if (absenceFilter() === 'recurring' || absenceFilter() === 'all') {
+          <div class="filter-group weekday-filter">
+            <label>Wochentag:</label>
+            <select [ngModel]="selectedWeekday()" (ngModelChange)="selectedWeekday.set($event)">
+              <option [value]="null">Alle Wochentage</option>
+              @for (weekday of weekdayOrder; track weekday) {
+                <option [value]="weekday">{{ weekdayLabels[weekday] }}</option>
+              }
+            </select>
           </div>
         }
       </div>
@@ -58,11 +70,15 @@ import { ToastService } from '../../core/services/toast.service';
             </div>
             @for (weekdayGroup of recurringByWeekday(); track weekdayGroup.weekday) {
               <div class="weekday-group">
-                <div class="weekday-header">
+                <div class="weekday-header" (click)="toggleWeekdayCollapse(weekdayGroup.weekday)">
+                  <button class="collapse-btn" [class.collapsed]="collapsedWeekdays().has(weekdayGroup.weekday)">
+                    {{ collapsedWeekdays().has(weekdayGroup.weekday) ? '▶' : '▼' }}
+                  </button>
                   <span class="weekday-name">{{ weekdayGroup.label }}</span>
                   <span class="weekday-count">{{ weekdayGroup.absences.length }}</span>
                 </div>
-                @for (absence of weekdayGroup.absences; track absence.id) {
+                @if (!collapsedWeekdays().has(weekdayGroup.weekday)) {
+                  @for (absence of weekdayGroup.absences; track absence.id) {
                   <div class="absence-item recurring">
                     <div class="absence-info">
                       <span class="absence-therapist">{{ getTherapistName(absence.therapistId) }}</span>
@@ -83,6 +99,7 @@ import { ToastService } from '../../core/services/toast.service';
                       <button class="btn-icon btn-delete" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
                     </div>
                   </div>
+                }
                 }
               </div>
             }
@@ -189,14 +206,24 @@ import { ToastService } from '../../core/services/toast.service';
                   </div>
                 </div>
               }
-              <div class="form-row">
-                <div class="form-group">
+              <div class="form-row time-row-centered">
+                <div class="form-group time-group">
                   <label>Von Uhrzeit</label>
-                  <input type="time" [(ngModel)]="absenceForm.startTime" name="startTime" />
+                  <div class="time-hpicker">
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(absenceForm.startTime) }}</span>
+                    <span class="tp-colon">:</span>
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(absenceForm.startTime) }}</span>
+                    <span class="tp-label">Uhr</span>
+                  </div>
                 </div>
-                <div class="form-group">
+                <div class="form-group time-group">
                   <label>Bis Uhrzeit</label>
-                  <input type="time" [(ngModel)]="absenceForm.endTime" name="endTime" />
+                  <div class="time-hpicker">
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(absenceForm.endTime) }}</span>
+                    <span class="tp-colon">:</span>
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(absenceForm.endTime) }}</span>
+                    <span class="tp-label">Uhr</span>
+                  </div>
                 </div>
               </div>
               <div class="form-group">
@@ -258,9 +285,13 @@ import { ToastService } from '../../core/services/toast.service';
 
     /* Weekday Groups for Recurring */
     .weekday-group { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 0.75rem; overflow: hidden; }
-    .weekday-header { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; background: linear-gradient(to right, #DBEAFE, #EFF6FF); border-bottom: 1px solid #BFDBFE; }
+    .weekday-header { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; background: linear-gradient(to right, #DBEAFE, #EFF6FF); border-bottom: 1px solid #BFDBFE; cursor: pointer; }
+    .weekday-header:hover { background: linear-gradient(to right, #BFDBFE, #DBEAFE); }
     .weekday-name { font-weight: 700; color: #1E40AF; font-size: 0.9rem; }
     .weekday-count { background: #1E40AF; color: white; padding: 0.125rem 0.4rem; border-radius: 8px; font-size: 0.7rem; font-weight: 600; }
+    .collapse-btn { background: none; border: none; font-size: 0.8rem; color: #1E40AF; cursor: pointer; padding: 0.125rem; margin-right: 0.5rem; transition: transform 0.2s; }
+    .collapse-btn.collapsed { transform: rotate(0deg); }
+    .collapse-btn:not(.collapsed) { transform: rotate(0deg); }
 
     .therapist-group { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; overflow: hidden; }
     .group-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; }
@@ -269,18 +300,18 @@ import { ToastService } from '../../core/services/toast.service';
     .count-badge { background: #E5E7EB; color: #374151; padding: 0.125rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 500; }
 
     .absence-list { padding: 0.5rem; }
-    .absence-item { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid #F3F4F6; gap: 1rem; }
+    .absence-item { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-bottom: 1px solid #F3F4F6; gap: 1rem; }
     .absence-item:last-child { border-bottom: none; }
     .absence-item.recurring { background: #F8FAFC; }
     .absence-item.special.past { opacity: 0.6; background: #F9FAFB; }
 
     .absence-info { display: flex; flex-direction: column; gap: 0.125rem; min-width: 150px; }
-    .absence-therapist { font-weight: 600; color: #1F2937; font-size: 0.875rem; }
-    .absence-day { font-weight: 600; color: #1F2937; font-size: 0.875rem; }
-    .absence-time { font-size: 0.75rem; color: #6B7280; }
+    .absence-therapist { font-weight: 600; color: #1F2937; font-size: 0.8rem; }
+    .absence-day { font-weight: 600; color: #1F2937; font-size: 0.8rem; }
+    .absence-time { font-size: 0.7rem; color: #6B7280; }
 
     .absence-details { flex: 1; display: flex; align-items: center; gap: 0.5rem; }
-    .absence-reason { font-size: 0.8rem; color: #6B7280; }
+    .absence-reason { font-size: 0.75rem; color: #6B7280; }
     .past-badge { background: #9CA3AF; color: white; padding: 0.125rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 500; }
 
     .absence-actions { display: flex; align-items: center; gap: 0.25rem; }
@@ -303,10 +334,18 @@ import { ToastService } from '../../core/services/toast.service';
 
     .form-group { margin-bottom: 1rem; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .time-row-centered { justify-content: center; }
+    .time-group { display: flex; flex-direction: column; align-items: center; }
+    .time-hpicker { display: flex; align-items: center; gap: 0.15rem; background: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 8px; padding: 0.4rem 0.5rem; }
+    .tp-value { font-size: 1.15rem; font-weight: 600; color: #111827; min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
+    .tp-scrollable { cursor: pointer; user-select: none; }
+    .tp-scrollable:hover { background: #E5E7EB; border-radius: 4px; }
+    .tp-colon { font-size: 1.1rem; font-weight: 700; color: #9CA3AF; margin: 0 0.1rem; }
+    .tp-label { font-size: 0.75rem; color: #9CA3AF; font-weight: 500; margin-left: 0.2rem; }
     .form-group label { display: block; margin-bottom: 0.25rem; font-weight: 500; color: #374151; font-size: 0.875rem; }
     .form-group input, .form-group select { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; box-sizing: border-box; }
     .form-group input:focus, .form-group select:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem; }
+    .modal-actions { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 1.5rem; }
   `]
 })
 export class AbsenceListComponent implements OnInit {
@@ -317,10 +356,12 @@ export class AbsenceListComponent implements OnInit {
   therapists = signal<Therapist[]>([]);
   absenceFilter = signal<'all' | 'recurring' | 'special'>('all');
   timeFilter = signal<'future' | 'past' | 'all'>('future');
-  selectedTherapistId: number | null = null;
+  selectedTherapistId = signal<number | null>(null);
+  selectedWeekday = signal<string | null>(null);
+  collapsedWeekdays = signal<Set<string>>(new Set());
 
-  private readonly weekdayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-  private readonly weekdayLabels: { [key: string]: string } = {
+  readonly weekdayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  readonly weekdayLabels: { [key: string]: string } = {
     'MONDAY': 'Montag',
     'TUESDAY': 'Dienstag',
     'WEDNESDAY': 'Mittwoch',
@@ -329,6 +370,11 @@ export class AbsenceListComponent implements OnInit {
     'SATURDAY': 'Samstag',
     'SUNDAY': 'Sonntag'
   };
+
+  // Time picker constants
+  startHour = 7;
+  endHour = 20;
+  slotMinutes = 10;
 
   showModal = false;
   showDeleteModal = false;
@@ -349,11 +395,17 @@ export class AbsenceListComponent implements OnInit {
   constructor(
     private absenceService: AbsenceService,
     private therapistService: TherapistService,
-    private toast: ToastService
+    private toast: ToastService,
+    private authService: AuthService
   ) {}
 
   ngOnInit(): void {
     this.loadData();
+
+    // Debug: Show current user info
+    this.authService.user$.subscribe(user => {
+      console.log('AbsenceListComponent - Current user:', user);
+    });
   }
 
   loadData(): void {
@@ -374,7 +426,7 @@ export class AbsenceListComponent implements OnInit {
 
   loadAbsences(): void {
     this.absenceService.getAll().subscribe({
-      next: (absences) => {
+      next: (absences: Absence[]) => {
         this.absences.set(absences || []);
         this.loading.set(false);
       },
@@ -388,7 +440,7 @@ export class AbsenceListComponent implements OnInit {
   filteredAbsences = computed(() => {
     let abs = this.absences();
     const filter = this.absenceFilter();
-    const therapistId = this.selectedTherapistId;
+    const therapistId = this.selectedTherapistId();
 
     // Filter by type first
     switch (filter) {
@@ -412,7 +464,7 @@ export class AbsenceListComponent implements OnInit {
   /** Recurring absences only */
   recurringAbsences = computed(() => {
     let abs = this.absences().filter(a => a.absenceType === 'RECURRING');
-    const therapistId = this.selectedTherapistId;
+    const therapistId = this.selectedTherapistId();
     if (therapistId) {
       abs = abs.filter(a => a.therapistId === Number(therapistId));
     }
@@ -422,7 +474,7 @@ export class AbsenceListComponent implements OnInit {
   /** Special absences filtered by time */
   specialAbsences = computed(() => {
     let abs = this.absences().filter(a => a.absenceType === 'SPECIAL');
-    const therapistId = this.selectedTherapistId;
+    const therapistId = this.selectedTherapistId();
     const tf = this.timeFilter();
     const today = new Date().toISOString().split('T')[0];
 
@@ -455,8 +507,10 @@ export class AbsenceListComponent implements OnInit {
   recurringByWeekday = computed(() => {
     const abs = this.recurringAbsences();
     const groups: { weekday: string; label: string; absences: Absence[] }[] = [];
+    const selectedWeekday = this.selectedWeekday();
+    const weekdaysToShow: string[] = selectedWeekday ? [selectedWeekday] : this.weekdayOrder;
 
-    for (const weekday of this.weekdayOrder) {
+    for (const weekday of weekdaysToShow) {
       const weekdayAbsences = abs.filter(a => a.weekday === weekday);
       if (weekdayAbsences.length > 0) {
         groups.push({
@@ -513,8 +567,15 @@ export class AbsenceListComponent implements OnInit {
     this.timeFilter.set(filter);
   }
 
-  onFilterChange(): void {
-    // Trigger computed update
+  toggleWeekdayCollapse(weekday: string): void {
+    const current = this.collapsedWeekdays();
+    const newSet = new Set(current);
+    if (newSet.has(weekday)) {
+      newSet.delete(weekday);
+    } else {
+      newSet.add(weekday);
+    }
+    this.collapsedWeekdays.set(newSet);
   }
 
   openAddModal(): void {
@@ -537,11 +598,11 @@ export class AbsenceListComponent implements OnInit {
     this.absenceForm = {
       therapistId: absence.therapistId,
       absenceType: absence.absenceType,
-      date: absence.date || '',
-      endDate: absence.endDate || '',
+      date: absence.date ? absence.date.split('T')[0] : '',
+      endDate: absence.endDate ? absence.endDate.split('T')[0] : '',
       weekday: absence.weekday || 'MONDAY',
-      startTime: absence.startTime || '',
-      endTime: absence.endTime || '',
+      startTime: this.formatTime(absence.startTime || ''),
+      endTime: this.formatTime(absence.endTime || ''),
       reason: absence.reason || ''
     };
     this.showModal = true;
@@ -553,6 +614,27 @@ export class AbsenceListComponent implements OnInit {
   }
 
   saveAbsence(): void {
+    // Temporarily disabled permission check for debugging
+    /*
+    // Check permissions for editing
+    if (this.editingAbsence) {
+      // Get current user synchronously
+      let currentUser: any = null;
+      this.authService.user$.subscribe(user => currentUser = user).unsubscribe();
+
+      console.log('Current user for editing:', currentUser);
+      const allowedRoles = ['ADMIN', 'RECEPTION'];
+      if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+        this.toast.error('Sie haben keine Berechtigung, Abwesenheiten zu bearbeiten. Rolle: ' + (currentUser?.role || 'unbekannt'));
+        return;
+      }
+    }
+    */
+
+    this.performSave();
+  }
+
+  private performSave(): void {
     if (!this.editingAbsence && !this.absenceForm.therapistId) {
       this.toast.error('Bitte wählen Sie einen Therapeuten');
       return;
@@ -566,15 +648,26 @@ export class AbsenceListComponent implements OnInit {
     this.saving.set(true);
 
     const request: CreateAbsenceRequest = {
+      id: this.editingAbsence ? this.editingAbsence.id : undefined,
       therapistId: this.editingAbsence ? this.editingAbsence.therapistId : this.absenceForm.therapistId!,
       absenceType: this.absenceForm.absenceType,
-      date: this.absenceForm.absenceType === 'SPECIAL' ? this.absenceForm.date : undefined,
-      endDate: this.absenceForm.absenceType === 'SPECIAL' && this.absenceForm.endDate ? this.absenceForm.endDate : undefined,
+      date: this.absenceForm.absenceType === 'SPECIAL' && this.absenceForm.date && this.absenceForm.date !== '' ? this.absenceForm.date : undefined,
+      endDate: this.absenceForm.absenceType === 'SPECIAL' && this.absenceForm.endDate && this.absenceForm.endDate !== '' ? this.absenceForm.endDate : undefined,
       weekday: this.absenceForm.absenceType === 'RECURRING' ? this.absenceForm.weekday : undefined,
-      startTime: this.absenceForm.startTime || undefined,
-      endTime: this.absenceForm.endTime || undefined,
-      reason: this.absenceForm.reason || undefined
+      startTime: this.absenceForm.startTime
+        ? this.absenceForm.absenceType === 'SPECIAL'
+          ? this.combineDateAndTime(this.absenceForm.date, this.absenceForm.startTime)
+          : this.combineDateAndTime('1970-01-01', this.absenceForm.startTime) // Feste Basis für RECURRING
+        : undefined,
+      endTime: this.absenceForm.endTime
+        ? this.absenceForm.absenceType === 'SPECIAL'
+          ? this.combineDateAndTime(this.absenceForm.endDate || this.absenceForm.date, this.absenceForm.endTime)
+          : this.combineDateAndTime('1970-01-01', this.absenceForm.endTime) // Feste Basis für RECURRING
+        : undefined,
+      reason: this.absenceForm.reason && this.absenceForm.reason !== '' ? this.absenceForm.reason : undefined
     };
+
+    console.log('Saving absence request:', JSON.stringify(request, null, 2)); // Debug log
 
     const operation = this.editingAbsence
       ? this.absenceService.update(this.editingAbsence.id, request)
@@ -587,9 +680,10 @@ export class AbsenceListComponent implements OnInit {
         this.closeModal();
         this.loadAbsences();
       },
-      error: () => {
+      error: (error: any) => {
         this.saving.set(false);
-        this.toast.error('Fehler beim Speichern');
+        console.error('Absence save error:', error);
+        this.toast.error('Fehler beim Speichern: ' + (error.error?.message || error.message || 'Unbekannter Fehler'));
       }
     });
   }
@@ -607,6 +701,26 @@ export class AbsenceListComponent implements OnInit {
   deleteAbsence(): void {
     if (!this.absenceToDelete) return;
 
+    // Temporarily disabled permission check for debugging
+    /*
+    // Check permissions for deleting
+    let currentUser: any = null;
+    this.authService.user$.subscribe(user => currentUser = user).unsubscribe();
+
+    console.log('Current user for deleting:', currentUser);
+    const allowedRoles = ['ADMIN', 'RECEPTION'];
+    if (!currentUser || !allowedRoles.includes(currentUser.role)) {
+      this.toast.error('Sie haben keine Berechtigung, Abwesenheiten zu löschen. Rolle: ' + (currentUser?.role || 'unbekannt'));
+      return;
+    }
+    */
+
+    this.performDelete();
+  }
+
+  private performDelete(): void {
+    if (!this.absenceToDelete) return;
+
     this.deleting.set(true);
     this.absenceService.delete(this.absenceToDelete.id).subscribe({
       next: () => {
@@ -615,9 +729,10 @@ export class AbsenceListComponent implements OnInit {
         this.closeDeleteModal();
         this.loadAbsences();
       },
-      error: () => {
+      error: (error: any) => {
         this.deleting.set(false);
-        this.toast.error('Fehler beim Löschen');
+        console.error('Absence delete error:', error);
+        this.toast.error('Fehler beim Löschen: ' + (error.error?.message || error.message || 'Unbekannter Fehler'));
       }
     });
   }
@@ -661,5 +776,62 @@ export class AbsenceListComponent implements OnInit {
     const today = new Date().toISOString().split('T')[0];
     const endDate = absence.endDate || absence.date;
     return endDate < today;
+  }
+
+  private combineDateAndTime(date: string, time: string): string {
+    if (!date || !time) return '';
+    // Kombiniere Datum (YYYY-MM-DD) mit Zeit (HH:mm) zu LocalDateTime (YYYY-MM-DDTHH:mm:00)
+    return `${date}T${time}:00`;
+  }
+
+  // Time picker methods
+  onTimeScroll(event: WheelEvent, which: 'start' | 'end', part: 'hour' | 'minute'): void {
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 1 : -1;
+    if (part === 'hour') {
+      this.adjustHour(which, delta);
+    } else {
+      this.adjustMinute(which, delta * this.slotMinutes);
+    }
+  }
+
+  getHourFromTime(time: string): string {
+    if (!time) return '--';
+    return time.split(':')[0] || '--';
+  }
+
+  getMinuteFromTime(time: string): string {
+    if (!time) return '--';
+    return time.split(':')[1] || '--';
+  }
+
+  adjustHour(which: 'start' | 'end', delta: number): void {
+    const prop = which === 'start' ? 'startTime' : 'endTime';
+    let current = this.absenceForm[prop];
+    if (!current) current = `${this.startHour.toString().padStart(2, '0')}:00`;
+
+    const parts = current.split(':');
+    let h = parseInt(parts[0], 10) + delta;
+    if (h < this.startHour) h = this.endHour;
+    if (h > this.endHour) h = this.startHour;
+    this.absenceForm[prop] = `${h.toString().padStart(2, '0')}:${parts[1]}`;
+  }
+
+  adjustMinute(which: 'start' | 'end', delta: number): void {
+    const prop = which === 'start' ? 'startTime' : 'endTime';
+    let current = this.absenceForm[prop];
+    if (!current) current = `${this.startHour.toString().padStart(2, '0')}:00`;
+
+    const parts = current.split(':');
+    let h = parseInt(parts[0], 10);
+    let m = parseInt(parts[1], 10) + delta;
+
+    if (m >= 60) { m = 0; h++; }
+    if (m < 0) { m = 50; h--; }
+    if (h > this.endHour) { h = this.startHour; }
+    if (h < this.startHour) { h = this.endHour; }
+    if (h === this.endHour && m > 0) { m = 0; }
+
+    this.absenceForm[prop] = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   }
 }

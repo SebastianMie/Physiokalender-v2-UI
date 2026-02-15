@@ -879,12 +879,16 @@ export class DailyListComponent implements OnInit {
           return dateStr >= startDate && dateStr <= endDate;
         }
       })
-      .map(a => ({
-        absence: a,
-        startTime: a.startTime || `${this.startHour.toString().padStart(2, '0')}:00`,
-        endTime: a.endTime || `${this.endHour.toString().padStart(2, '0')}:00`,
-        isFullDay: !a.startTime || !a.endTime
-      }));
+      .map(a => {
+        const startTime = this.formatTime(a.startTime || `${this.startHour.toString().padStart(2, '0')}:00`);
+        const endTime = this.formatTime(a.endTime || `${this.endHour.toString().padStart(2, '0')}:00`);
+        return {
+          absence: a,
+          startTime,
+          endTime,
+          isFullDay: !a.startTime || !a.endTime
+        };
+      });
   }
 
   /** All therapist columns with their appointments and absences */
@@ -987,7 +991,10 @@ export class DailyListComponent implements OnInit {
   loadAbsences(): void {
     this.absenceService.getAll().subscribe({
       next: (absences) => this.allAbsences.set(absences || []),
-      error: () => {} // silently fail
+      error: (err) => {
+        console.error('Error loading absences:', err);
+        this.toastService.show('Fehler beim Laden der Abwesenheiten', 'error');
+      }
     });
   }
 

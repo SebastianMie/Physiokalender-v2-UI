@@ -42,6 +42,17 @@ export interface CancellationDTO {
   date: string;              // ISO date
 }
 
+export interface UpdateAppointmentSeriesRequest {
+  startTime?: string;        // ISO timestamp
+  endTime?: string;          // ISO timestamp
+  comment?: string;
+  isHotair?: boolean;
+  isUltrasonic?: boolean;
+  isElectric?: boolean;
+  endDate?: string;          // ISO date string (YYYY-MM-DD) or ISO timestamp
+  weeklyFrequency?: number;  // 1, 2, 3, or 4 weeks
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -61,8 +72,16 @@ export class AppointmentSeriesService {
     return this.http.post(this.apiUrl, series, { responseType: 'text' });
   }
 
+  update(id: number, series: UpdateAppointmentSeriesRequest): Observable<AppointmentSeries> {
+    return this.http.put<AppointmentSeries>(`${this.apiUrl}/${id}`, series);
+  }
+
   addCancellations(seriesId: number, cancellations: CancellationDTO[]): Observable<AppointmentSeries> {
     return this.http.post<AppointmentSeries>(`${this.apiUrl}/${seriesId}/cancellations`, cancellations);
+  }
+
+  deleteCancellation(seriesId: number, cancellationId: number): Observable<AppointmentSeries> {
+    return this.http.delete<AppointmentSeries>(`${this.apiUrl}/${seriesId}/cancellations/${cancellationId}`);
   }
 
   delete(id: number): Observable<void> {

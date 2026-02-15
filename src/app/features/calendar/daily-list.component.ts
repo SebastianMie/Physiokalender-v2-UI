@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule, ActivatedRoute } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { AppointmentService, Appointment, MoveAppointmentRequest, CreateAppointmentRequest } from '../../data-access/api/appointment.service';
-import { AppointmentSeriesService, CreateAppointmentSeriesRequest } from '../../data-access/api/appointment-series.service';
+import { AppointmentSeriesService, CreateAppointmentSeriesRequest, UpdateAppointmentSeriesRequest } from '../../data-access/api/appointment-series.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService, Patient, CreatePatientRequest } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -195,9 +195,9 @@ interface NewPatientForm {
                     [style.top.px]="getAbsenceTop(absenceEntry)"
                     [style.height.px]="getAbsenceHeight(absenceEntry)"
                     [class.full-day]="absenceEntry.isFullDay"
-                    [title]="absenceEntry.absence.reason || 'Abwesend'">
+                    [title]="(absenceEntry.absence.reason || 'Abwesend') + (absenceEntry.isFullDay ? '' : ' (' + absenceEntry.startTime + ' - ' + absenceEntry.endTime + ')')">
                     <div class="absence-content">
-                      <span class="absence-icon">🚫</span>
+                      <span class="absence-icon">—</span>
                       <span class="absence-label">{{ absenceEntry.absence.reason || 'Abwesend' }}</span>
                       @if (!absenceEntry.isFullDay) {
                         <span class="absence-time">{{ absenceEntry.startTime }} - {{ absenceEntry.endTime }}</span>
@@ -217,9 +217,34 @@ interface NewPatientForm {
           <div class="modal modal-lg" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>{{ editingAppointment() ? 'Termin bearbeiten' : (newAppointment.isSeries ? 'Neuen Serientermin anlegen' : 'Neuen Termin anlegen') }}</h2>
+              @if (editingAppointment()?.createdBySeriesAppointment && editingAppointment()?.appointmentSeriesId) {
+                <div class="edit-mode-header">
+                  <span class="edit-mode-label">Nur diesen Termin bearbeiten?</span>
+                  <div class="edit-mode-btns">
+                    <button type="button" class="edit-mode-btn" [class.active]="editMode() === 'single'" (click)="setEditModeSingle()">
+                      Ja
+                    </button>
+                    <button type="button" class="edit-mode-btn" [class.active]="editMode() === 'series'" (click)="setEditModeSeries()">
+                      Serie
+                    </button>
+                  </div>
+                </div>
+              }
               <button class="btn-close" (click)="closeCreateModal()">&times;</button>
             </div>
-            <form (ngSubmit)="saveAppointment()">
+            <form (ngSubmit)="onSaveClick()">
+              <!-- Series info banner when editing entire series -->
+              @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
+                <div class="series-info-banner">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <span>Änderungen werden auf alle zukünftigen Termine dieser Serie angewendet.</span>
+                </div>
+              }
+
               <!-- Termin-Typ Toggle (nur im Erstellen-Modus) -->
               @if (!editingAppointment()) {
                 <div class="type-toggle-row">
@@ -298,8 +323,8 @@ interface NewPatientForm {
                 }
 
                 <!-- Zeiten -->
-                <div class="form-row">
-                  <div class="form-group">
+                <div class="form-row time-row-centered">
+                  <div class="form-group time-group">
                     <label>Beginn *</label>
                     <div class="time-hpicker">
                       <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.startTime) }}</span>
@@ -308,7 +333,7 @@ interface NewPatientForm {
                       <span class="tp-label">Uhr</span>
                     </div>
                   </div>
-                  <div class="form-group">
+                  <div class="form-group time-group">
                     <label>Ende *</label>
                     <div class="time-hpicker">
                       <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.endTime) }}</span>
@@ -318,6 +343,25 @@ interface NewPatientForm {
                     </div>
                   </div>
                 </div>
+
+                <!-- Series Edit Options (Enddatum und Intervall bei Serie bearbeiten) -->
+                @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Enddatum</label>
+                      <input type="date" [(ngModel)]="seriesEditEndDate" name="seriesEditEndDate" [min]="newAppointment.date" />
+                    </div>
+                    <div class="form-group">
+                      <label>Intervall</label>
+                      <select [(ngModel)]="seriesEditWeeklyFrequency" name="seriesEditWeeklyFrequency">
+                        <option [ngValue]="1">Jede Woche</option>
+                        <option [ngValue]="2">Alle 2 Wochen</option>
+                        <option [ngValue]="3">Alle 3 Wochen</option>
+                        <option [ngValue]="4">Alle 4 Wochen</option>
+                      </select>
+                    </div>
+                  </div>
+                }
 
                 <!-- Serien-Optionen -->
                 @if (newAppointment.isSeries) {
@@ -403,21 +447,45 @@ interface NewPatientForm {
         <div class="modal-overlay" (click)="cancelDeleteAppointment()">
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>Termin löschen</h2>
+              <h2>{{ editingAppointment()?.createdBySeriesAppointment ? 'Serientermin absagen' : 'Termin löschen' }}</h2>
               <button class="btn-close" (click)="cancelDeleteAppointment()">&times;</button>
             </div>
-            <p>Möchten Sie diesen Termin wirklich löschen?</p>
+            @if (editingAppointment()?.createdBySeriesAppointment) {
+              <p>Dieser Termin gehört zu einer Serie. Der Termin wird als <strong>Ausfall</strong> markiert und kann in der Serienübersicht verwaltet werden.</p>
+            } @else {
+              <p>Möchten Sie diesen Termin wirklich löschen?</p>
+            }
             @if (editingAppointment(); as apt) {
               <div class="delete-info">
                 <strong>{{ apt.patientName }}</strong><br>
-                {{ apt.date | date:'dd.MM.yyyy' }} · {{ apt.startTime }} - {{ apt.endTime }}
+                {{ apt.date | date:'dd.MM.yyyy' }} · {{ formatTime(apt.startTime) }} - {{ formatTime(apt.endTime) }}
+                @if (apt.createdBySeriesAppointment) {
+                  <span class="series-badge">Serientermin</span>
+                }
               </div>
             }
             <div class="modal-actions">
               <button type="button" class="btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
               <button type="button" class="btn-danger" (click)="deleteAppointment()" [disabled]="deletingAppointment()">
-                {{ deletingAppointment() ? 'Löschen...' : 'Löschen' }}
+                {{ deletingAppointment() ? 'Wird verarbeitet...' : (editingAppointment()?.createdBySeriesAppointment ? 'Als Ausfall markieren' : 'Löschen') }}
               </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Series Edit Confirmation Modal -->
+      @if (showSeriesEditConfirmModal()) {
+        <div class="modal-overlay" (click)="cancelSeriesEdit()">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>Gesamte Serie bearbeiten</h2>
+              <button class="btn-close" (click)="cancelSeriesEdit()">&times;</button>
+            </div>
+            <p>Die Änderungen werden auf <strong>alle zukünftigen Termine</strong> dieser Serie angewendet. Möchten Sie fortfahren?</p>
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" (click)="cancelSeriesEdit()">Abbrechen</button>
+              <button type="button" class="btn-primary" (click)="confirmSeriesEdit()">Ja, Serie aktualisieren</button>
             </div>
           </div>
         </div>
@@ -624,7 +692,9 @@ interface NewPatientForm {
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .form-row { grid-column: 1 / -1; display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
-    .form-row.checkboxes { flex-wrap: wrap; gap: 1rem; }
+    .form-row.checkboxes { flex-wrap: wrap; gap: 1rem; justify-content: center; }
+    .form-row.time-row-centered { justify-content: center; }
+    .form-row.time-row-centered .form-group.time-group { flex: 0 0 auto; min-width: 120px; }
     .checkbox-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #374151; cursor: pointer; }
     .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: #3B82F6; }
 
@@ -662,17 +732,34 @@ interface NewPatientForm {
     .tp-label { font-size: 0.75rem; color: #9CA3AF; font-weight: 500; margin-left: 0.2rem; }
 
     /* Patient input inline selection */
-    .patient-search-wrapper input.patient-selected { color: #111827; font-weight: 500; background: #F0FFF4; border-color: #86EFAC; padding-right: 2rem; }
+    .patient-search-wrapper input.patient-selected { color: #111827; font-weight: 500; padding-right: 2rem; }
     .input-clear-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: none; background: #E5E7EB; color: #6B7280; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; line-height: 1; }
     .input-clear-btn:hover { background: #FCA5A5; color: #991B1B; }
 
     /* Absence Blockers */
-    .absence-blocker { position: absolute; left: 2px; right: 2px; background: repeating-linear-gradient(45deg, #FEE2E2, #FEE2E2 10px, #FECACA 10px, #FECACA 20px); border: 1px solid #F87171; border-radius: 4px; z-index: 1; opacity: 0.85; pointer-events: none; overflow: hidden; }
-    .absence-blocker.full-day { background: repeating-linear-gradient(45deg, #FEE2E2, #FEE2E2 10px, #FECACA 10px, #FECACA 20px); }
-    .absence-content { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 0.25rem; text-align: center; }
-    .absence-icon { font-size: 0.75rem; }
-    .absence-label { font-size: 0.6rem; font-weight: 500; color: #991B1B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    .absence-time { font-size: 0.5rem; color: #B91C1C; }
+    .absence-blocker { position: absolute; left: 2px; right: 2px; background: repeating-linear-gradient(45deg, #F3F4F6, #F3F4F6 10px, #E5E7EB 10px, #E5E7EB 20px); border: 1px solid #9CA3AF; border-radius: 4px; z-index: 1; opacity: 0.9; pointer-events: none; overflow: hidden; }
+    .absence-blocker.full-day { background: repeating-linear-gradient(45deg, #F3F4F6, #F3F4F6 10px, #E5E7EB 10px, #E5E7EB 20px); }
+    .absence-content { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 0.25rem 0.5rem; text-align: center; }
+    .absence-icon { font-size: 0.85rem; color: #6B7280; }
+    .absence-label { font-size: 0.7rem; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .absence-time { font-size: 0.55rem; color: #6B7280; font-weight: 500; }
+
+    /* Edit mode toggle for series appointments - subtle header style */
+    .edit-mode-header { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+    .edit-mode-label { font-size: 0.7rem; color: #9CA3AF; font-weight: 400; }
+    .edit-mode-btns { display: flex; gap: 0; border: 1px solid #E5E7EB; border-radius: 4px; overflow: hidden; }
+    .edit-mode-btn { padding: 0.25rem 0.5rem; border: none; background: #F9FAFB; cursor: pointer; font-size: 0.65rem; font-weight: 500; color: #9CA3AF; transition: all 0.15s; }
+    .edit-mode-btn:first-child { border-right: 1px solid #E5E7EB; }
+    .edit-mode-btn.active { background: #3B82F6; color: white; }
+    .edit-mode-btn:hover:not(.active) { background: #F3F4F6; color: #6B7280; }
+
+    /* Series info when editing entire series */
+    .series-info-banner { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; margin-bottom: 1rem; font-size: 0.75rem; color: #1E40AF; }
+    .series-info-banner svg { flex-shrink: 0; }
+
+    /* Series badge in delete info */
+    .series-badge { display: inline-block; margin-top: 0.5rem; background: #A78BFA; color: white; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 500; }
+    .delete-info .series-badge { margin-left: 0; }
   `]
 })
 export class DailyListComponent implements OnInit {
@@ -709,12 +796,18 @@ export class DailyListComponent implements OnInit {
   savingPatient = signal(false);
   showDeleteAppointmentModal = signal(false);
   deletingAppointment = signal(false);
+  showSeriesEditConfirmModal = signal(false);
   selectedPatient = signal<Patient | null>(null);
   allPatients = signal<Patient[]>([]);
   filteredPatients = signal<Patient[]>([]);
   showPatientDropdown = signal(false);
   patientSearchTerm = '';
   editingAppointment = signal<Appointment | null>(null);
+  editMode = signal<'single' | 'series'>('single'); // 'single' = edit this occurrence only, 'series' = edit series master
+
+  // Series edit fields (populated when switching to series edit mode)
+  seriesEditEndDate = '';
+  seriesEditWeeklyFrequency = 1;
 
   newAppointment: NewAppointmentForm = {
     therapistId: null,
@@ -848,12 +941,19 @@ export class DailyListComponent implements OnInit {
       }
       if (params['editId']) {
         this.pendingEditId = parseInt(params['editId'], 10);
+        this.pendingEditSeriesMode = false;
+      }
+      if (params['editSeriesId']) {
+        this.pendingEditSeriesId = parseInt(params['editSeriesId'], 10);
+        this.pendingEditSeriesMode = true;
       }
     });
     this.loadData();
   }
 
   private pendingEditId: number | null = null;
+  private pendingEditSeriesId: number | null = null;
+  private pendingEditSeriesMode = false;
 
   loadData(): void {
     this.loading.set(true);
@@ -905,6 +1005,21 @@ export class DailyListComponent implements OnInit {
             setTimeout(() => this.openEditDialog(apt), 100);
           }
           this.pendingEditId = null;
+        }
+        // Auto-open edit dialog for series (find first appointment of this series on this day)
+        if (this.pendingEditSeriesId) {
+          const apt = (appointments || []).find(a => a.appointmentSeriesId === this.pendingEditSeriesId);
+          if (apt) {
+            setTimeout(() => {
+              this.openEditDialog(apt);
+              // Set series edit mode and load series details
+              this.setEditModeSeries();
+            }, 100);
+          } else {
+            this.toastService.show('Kein Termin dieser Serie an diesem Tag gefunden', 'info');
+          }
+          this.pendingEditSeriesId = null;
+          this.pendingEditSeriesMode = false;
         }
       },
       error: (err) => {
@@ -1081,6 +1196,9 @@ export class DailyListComponent implements OnInit {
     this.newAppointment.isElectric = apt.isElectric;
     this.newAppointment.isSeries = false;
 
+    // Reset edit mode to 'single' by default
+    this.editMode.set('single');
+
     // Set the selected patient display
     const patient = this.allPatients().find(p => p.id === apt.patientId);
     this.selectedPatient.set(patient || null);
@@ -1096,6 +1214,30 @@ export class DailyListComponent implements OnInit {
         if (p) this.selectedPatient.set(p);
       }
     });
+  }
+
+  setEditModeSingle(): void {
+    this.editMode.set('single');
+  }
+
+  setEditModeSeries(): void {
+    this.editMode.set('series');
+    // Load series details to populate endDate and weeklyFrequency
+    const seriesId = this.editingAppointment()?.appointmentSeriesId;
+    if (seriesId) {
+      this.seriesService.getById(seriesId).subscribe({
+        next: (series) => {
+          // endDate comes as ISO string or null
+          this.seriesEditEndDate = series.endDate ? series.endDate.split('T')[0] : '';
+          this.seriesEditWeeklyFrequency = series.weeklyFrequency || 1;
+        },
+        error: () => {
+          // Fallback to defaults
+          this.seriesEditEndDate = '';
+          this.seriesEditWeeklyFrequency = 1;
+        }
+      });
+    }
   }
 
   // ================== Time Scroll Helpers ==================
@@ -1239,18 +1381,71 @@ export class DailyListComponent implements OnInit {
     return !!f.date;
   }
 
+  onSaveClick(): void {
+    if (!this.canSaveAppointment()) return;
+    const editing = this.editingAppointment();
+    // If editing a series appointment and user chose series mode, show confirmation
+    if (editing?.createdBySeriesAppointment && editing?.appointmentSeriesId && this.editMode() === 'series') {
+      this.showSeriesEditConfirmModal.set(true);
+    } else {
+      this.saveAppointment();
+    }
+  }
+
+  confirmSeriesEdit(): void {
+    this.showSeriesEditConfirmModal.set(false);
+    this.saveAppointment();
+  }
+
+  cancelSeriesEdit(): void {
+    this.showSeriesEditConfirmModal.set(false);
+  }
+
   saveAppointment(): void {
     if (!this.canSaveAppointment()) return;
     this.savingAppointment.set(true);
 
     const editing = this.editingAppointment();
     if (editing) {
-      this.updateExistingAppointment(editing.id);
+      // Check if editing a series appointment and user chose to edit the series master
+      if (editing.createdBySeriesAppointment && editing.appointmentSeriesId && this.editMode() === 'series') {
+        this.updateSeriesMaster(editing.appointmentSeriesId);
+      } else {
+        this.updateExistingAppointment(editing.id);
+      }
     } else if (this.newAppointment.isSeries) {
       this.saveSeriesAppointment();
     } else {
       this.saveSingleAppointment();
     }
+  }
+
+  private updateSeriesMaster(seriesId: number): void {
+    const dateStr = this.newAppointment.date;
+    const request: UpdateAppointmentSeriesRequest = {
+      startTime: `${dateStr}T${this.newAppointment.startTime}:00.000`,
+      endTime: `${dateStr}T${this.newAppointment.endTime}:00.000`,
+      comment: this.newAppointment.comment || undefined,
+      isHotair: this.newAppointment.isHotair,
+      isUltrasonic: this.newAppointment.isUltrasonic,
+      isElectric: this.newAppointment.isElectric,
+      endDate: this.seriesEditEndDate ? `${this.seriesEditEndDate}T00:00:00.000` : undefined,
+      weeklyFrequency: this.seriesEditWeeklyFrequency
+    };
+
+    this.seriesService.update(seriesId, request).subscribe({
+      next: () => {
+        this.savingAppointment.set(false);
+        this.appointmentCache.invalidateCache();
+        this.toastService.show('Serientermin erfolgreich aktualisiert', 'success');
+        this.closeCreateModal();
+        this.loadAppointments();
+      },
+      error: (err) => {
+        this.savingAppointment.set(false);
+        this.toastService.show('Fehler beim Aktualisieren des Serientermins', 'error');
+      }
+    });
   }
 
   private updateExistingAppointment(id: number): void {
@@ -1383,7 +1578,10 @@ export class DailyListComponent implements OnInit {
     this.deletingAppointment.set(true);
     this.appointmentService.delete(apt.id).subscribe({
       next: () => {
-        this.toastService.show('Termin wurde gelöscht', 'success');
+        const message = apt.createdBySeriesAppointment
+          ? 'Termin wurde als Ausfall markiert'
+          : 'Termin wurde gelöscht';
+        this.toastService.show(message, 'success');
         this.showDeleteAppointmentModal.set(false);
         this.closeCreateModal();
         this.loadAppointments();

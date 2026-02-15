@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterModule, Router } from '@angular/router';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
 import { AppointmentService, Appointment, PageResponse, AppointmentPageParams } from '../../data-access/api/appointment.service';
-import { AppointmentSeriesService, AppointmentSeries, CancellationDTO } from '../../data-access/api/appointment-series.service';
+import { AppointmentSeriesService, AppointmentSeries, CancellationDTO, UpdateAppointmentSeriesRequest } from '../../data-access/api/appointment-series.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -253,8 +253,8 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                   </thead>
                   <tbody>
                     @for (s of paginatedSeries(); track s.id) {
-                      <tr class="apt-row" [class.cancelled]="s.status === 'CANCELLED'">
-                        <td>
+                      <tr class="apt-row clickable-row" [class.cancelled]="s.status === 'CANCELLED'" (click)="openSeriesEditModal(s)" title="Klicken zum Bearbeiten">
+                        <td (click)="$event.stopPropagation()">
                           <a [routerLink]="['/dashboard/patients', s.patientId]" class="link-blue">{{ s.patientName || 'Kein Patient' }}</a>
                         </td>
                         <td>
@@ -276,7 +276,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                             <span class="no-cancellations">–</span>
                           }
                         </td>
-                        <td class="col-actions-apt">
+                        <td class="col-actions-apt" (click)="$event.stopPropagation()">
                           <div class="action-btns">
                             <button class="action-btn" title="Nächsten Termin im Kalender anzeigen" (click)="navigateToSeriesDay(s)">&#128197;</button>
                             <button class="action-btn" title="Ausfall eintragen" (click)="openCancellationModal(s)">&#10006;</button>
@@ -320,29 +320,62 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     <!-- Cancellation Modal -->
     @if (showCancellationModal()) {
       <div class="modal-overlay" (click)="closeCancellationModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal modal-cancellations" (click)="$event.stopPropagation()">
           <div class="modal-header-bar">
-            <h2>Ausfall eintragen</h2>
+            <h2>Ausfälle verwalten</h2>
             <button class="btn-close" (click)="closeCancellationModal()">&times;</button>
           </div>
           <p class="modal-sub">Serie: {{ cancellationSeries()?.patientName }} – {{ weekdayLabel(cancellationSeries()?.weekday || '') }}</p>
-          <div class="form-group">
-            <label>Datum des Ausfalls *</label>
-            <input type="date" [(ngModel)]="newCancellationDate" />
-          </div>
+
+          <!-- Existing cancellations table -->
           @if (cancellationSeries()?.cancellations && cancellationSeries()!.cancellations!.length > 0) {
-            <div class="existing-cancellations">
-              <label>Bisherige Ausfälle:</label>
-              <div class="cancellation-chips">
-                @for (c of cancellationSeries()!.cancellations!; track c.date) {
-                  <span class="cancellation-chip">{{ formatDateDE(c.date) }}</span>
-                }
-              </div>
+            <div class="cancellations-table-wrapper">
+              <table class="cancellations-table">
+                <thead>
+                  <tr>
+                    <th>Datum</th>
+                    <th>Wochentag</th>
+                    <th class="col-actions">Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (c of cancellationSeries()!.cancellations!; track c.id || c.date) {
+                    <tr>
+                      <td>{{ formatDateDE(c.date) }}</td>
+                      <td>{{ getWeekdayName(c.date) }}</td>
+                      <td class="col-actions">
+                        <button class="btn-remove-cancellation" title="Ausfall entfernen (Termin wiederherstellen)" (click)="removeCancellation(cancellationSeries()!.id, c.id!)" [disabled]="deletingCancellation()">
+                          &#128465;
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
             </div>
+          } @else {
+            <p class="no-cancellations-message">Keine Ausfälle vorhanden.</p>
           }
+
+          <!-- Add new cancellation -->
+          <div class="add-cancellation-section">
+            <h4>Neuen Ausfall eintragen</h4>
+            <div class="add-cancellation-row">
+              <select [(ngModel)]="newCancellationDate" class="date-select">
+                <option value="">Datum wählen...</option>
+                @for (d of availableCancellationDates(); track d) {
+                  <option [ngValue]="d">{{ formatDateDE(d) }} ({{ getWeekdayName(d) }})</option>
+                }
+              </select>
+              <button class="btn-primary" [disabled]="!newCancellationDate" (click)="saveCancellation()">Hinzufügen</button>
+            </div>
+            @if (availableCancellationDates().length === 0) {
+              <p class="no-dates-hint">Keine verfügbaren Termine mehr.</p>
+            }
+          </div>
+
           <div class="modal-actions-bar">
-            <button class="btn-secondary" (click)="closeCancellationModal()">Abbrechen</button>
-            <button class="btn-primary" [disabled]="!newCancellationDate" (click)="saveCancellation()">Ausfall speichern</button>
+            <button class="btn-secondary" (click)="closeCancellationModal()">Schließen</button>
           </div>
         </div>
       </div>
@@ -358,6 +391,94 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
             <button class="btn-secondary" (click)="showDeleteSeriesModal.set(false)">Abbrechen</button>
             <button class="btn-danger" (click)="deleteSeries()">Löschen</button>
           </div>
+        </div>
+      </div>
+    }
+
+    <!-- Series Edit Modal -->
+    @if (showSeriesEditModal() && editingSeries()) {
+      <div class="modal-overlay" (click)="closeSeriesEditModal()">
+        <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal-header-bar">
+            <h2>Serie bearbeiten</h2>
+            <button class="btn-close" (click)="closeSeriesEditModal()">&times;</button>
+          </div>
+
+          <div class="series-info-banner" style="margin-bottom: 1rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>Änderungen werden auf alle zukünftigen Termine dieser Serie angewendet.</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div>
+              <label style="font-weight: 600; color: #6B7280; font-size: 0.8rem;">Patient</label>
+              <p style="margin: 0.25rem 0 0 0; color: #374151; font-weight: 500;">{{ editingSeries()?.patientName }}</p>
+            </div>
+            <div>
+              <label style="font-weight: 600; color: #6B7280; font-size: 0.8rem;">Therapeut</label>
+              <p style="margin: 0.25rem 0 0 0; color: #374151;">{{ editingSeries()?.therapistName }}</p>
+            </div>
+          </div>
+
+          <form (ngSubmit)="saveSeriesEdit()">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label>Beginn</label>
+                <input type="time" [(ngModel)]="seriesEditForm.startTime" name="startTime" />
+              </div>
+              <div class="form-group">
+                <label>Ende</label>
+                <input type="time" [(ngModel)]="seriesEditForm.endTime" name="endTime" />
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group">
+                <label>Enddatum</label>
+                <input type="date" [(ngModel)]="seriesEditForm.endDate" name="endDate" />
+              </div>
+              <div class="form-group">
+                <label>Intervall</label>
+                <select [(ngModel)]="seriesEditForm.weeklyFrequency" name="weeklyFrequency">
+                  <option [ngValue]="1">Jede Woche</option>
+                  <option [ngValue]="2">Alle 2 Wochen</option>
+                  <option [ngValue]="3">Alle 3 Wochen</option>
+                  <option [ngValue]="4">Alle 4 Wochen</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 1.5rem; margin-bottom: 1rem;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" [(ngModel)]="seriesEditForm.isHotair" name="isHotair" />
+                Heißluft
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" [(ngModel)]="seriesEditForm.isUltrasonic" name="isUltrasonic" />
+                Ultraschall
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" [(ngModel)]="seriesEditForm.isElectric" name="isElectric" />
+                Elektrotherapie
+              </label>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 1rem;">
+              <label>Kommentar</label>
+              <textarea [(ngModel)]="seriesEditForm.comment" name="comment" rows="2" placeholder="Optionale Bemerkung..."></textarea>
+            </div>
+
+            <div class="modal-actions-bar">
+              <button type="button" class="btn-secondary" (click)="closeSeriesEditModal()">Abbrechen</button>
+              <button type="submit" class="btn-primary" [disabled]="savingSeriesEdit()">
+                {{ savingSeriesEdit() ? 'Speichern...' : 'Speichern' }}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     }
@@ -458,6 +579,8 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     .apt-row:hover { background: #F0F7FF; }
     .apt-row.cancelled { opacity: 0.5; }
     .apt-row.completed td { color: #6B7280; }
+    .apt-row.clickable-row { cursor: pointer; }
+    .apt-row.clickable-row:hover { background: #EFF6FF; }
     .col-date { white-space: nowrap; }
     .col-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .col-patient { min-width: 100px; }
@@ -527,6 +650,25 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     .btn-secondary:hover { background: #D1D5DB; }
     .btn-danger { background: #EF4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; }
     .btn-danger:hover { background: #DC2626; }
+
+    /* Cancellations modal */
+    .modal-cancellations { max-width: 550px; }
+    .cancellations-table-wrapper { max-height: 250px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 8px; margin-bottom: 1rem; }
+    .cancellations-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .cancellations-table th { background: #F9FAFB; padding: 0.5rem 0.75rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 1px solid #E5E7EB; font-size: 0.75rem; }
+    .cancellations-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #F3F4F6; color: #374151; }
+    .cancellations-table .col-actions { width: 50px; text-align: center; }
+    .btn-remove-cancellation { border: 1px solid #FCA5A5; background: #FEF2F2; color: #DC2626; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .btn-remove-cancellation:hover { background: #FEE2E2; border-color: #DC2626; }
+    .btn-remove-cancellation:disabled { opacity: 0.5; cursor: not-allowed; }
+    .no-cancellations-message { color: #9CA3AF; font-size: 0.85rem; text-align: center; padding: 1rem; }
+    .add-cancellation-section { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 1rem; }
+    .add-cancellation-section h4 { margin: 0 0 0.75rem; font-size: 0.85rem; color: #374151; }
+    .add-cancellation-row { display: flex; gap: 0.5rem; }
+    .add-cancellation-row .date-input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; }
+    .add-cancellation-row .date-select { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; background: white; }
+    .add-cancellation-row .btn-primary { flex-shrink: 0; }
+    .no-dates-hint { color: #9CA3AF; font-size: 0.75rem; margin-top: 0.5rem; text-align: center; }
 
     .pagination { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0; justify-content: center; }
     .page-btn { min-width: 28px; height: 28px; border: 1px solid #E5E7EB; background: white; border-radius: 4px; cursor: pointer; font-size: 0.75rem; color: #374151; display: flex; align-items: center; justify-content: center; }
@@ -598,10 +740,33 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   showCancellationModal = signal(false);
   cancellationSeries = signal<AppointmentSeries | null>(null);
   newCancellationDate = '';
+  deletingCancellation = signal(false);
+
+  // Computed: available dates for adding cancellations (future occurrences not yet cancelled)
+  availableCancellationDates = computed(() => {
+    const series = this.cancellationSeries();
+    if (!series) return [];
+    return this.calculateSeriesOccurrences(series);
+  });
 
   // Delete series modal
   showDeleteSeriesModal = signal(false);
   seriesToDelete = signal<AppointmentSeries | null>(null);
+
+  // Series edit modal
+  showSeriesEditModal = signal(false);
+  editingSeries = signal<AppointmentSeries | null>(null);
+  seriesEditForm = {
+    startTime: '',
+    endTime: '',
+    endDate: '',
+    weeklyFrequency: 1,
+    comment: '',
+    isHotair: false,
+    isUltrasonic: false,
+    isElectric: false
+  };
+  savingSeriesEdit = signal(false);
 
   // Patient detail modal
   showPatientDetail = signal(false);
@@ -673,7 +838,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     ).subscribe(term => {
       this.searchTerm = term;
       this.requestedPage.set(0); // Reset to first page on search
-      this.fetchAppointments();
+      this.applyFilters(); // Use applyFilters to handle both single and series viewMode
     });
   }
 
@@ -994,6 +1159,101 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     this.router.navigate(['/dashboard/calendar'], { queryParams: { date: fmt(nextDate) } });
   }
 
+  // Navigate to the next occurrence of a series and open it in edit (series) mode
+  navigateToEditSeries(series: AppointmentSeries): void {
+    const nextDateStr = this.getNextSeriesOccurrence(series);
+    if (!nextDateStr) {
+      this.toastService.show('Keine zukünftigen Termine in dieser Serie', 'info');
+      return;
+    }
+    // Find the appointment ID for this date - we need to get the appointment from backend
+    // For now navigate to the date with editSeriesMode flag
+    this.router.navigate(['/dashboard/calendar'], {
+      queryParams: { date: nextDateStr, editSeriesId: series.id }
+    });
+  }
+
+  // Get the next occurrence date for a series (from today onwards)
+  private getNextSeriesOccurrence(series: AppointmentSeries): string | null {
+    const weekdayMap: Record<string, number> = {
+      'SUNDAY': 0, 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3,
+      'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6
+    };
+
+    const targetDay = weekdayMap[series.weekday];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(series.startDate);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(series.endDate);
+    endDate.setHours(0, 0, 0, 0);
+    const frequency = series.weeklyFrequency || 1;
+
+    // Calculate the first occurrence from the start date
+    let current = new Date(startDate);
+
+    // Move to the first matching weekday on or after startDate
+    let daysToAdd = (targetDay - current.getDay() + 7) % 7;
+    current.setDate(current.getDate() + daysToAdd);
+
+    // Now iterate by frequency (weeks) to find first occurrence >= today
+    while (current <= endDate) {
+      if (current >= today) {
+        return current.toISOString().split('T')[0];
+      }
+      // Move forward by frequency weeks
+      current.setDate(current.getDate() + frequency * 7);
+    }
+
+    return null;
+  }
+
+  // Calculate all future occurrences of a series (for cancellation dropdown)
+  private calculateSeriesOccurrences(series: AppointmentSeries): string[] {
+    const weekdayMap: Record<string, number> = {
+      'SUNDAY': 0, 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3,
+      'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6
+    };
+
+    const targetDay = weekdayMap[series.weekday];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(series.startDate);
+    const endDate = new Date(series.endDate);
+    const frequency = series.weeklyFrequency || 1;
+
+    // Get existing cancellation dates
+    const cancelledDates = new Set(
+      (series.cancellations || []).map(c => c.date.split('T')[0])
+    );
+
+    const dates: string[] = [];
+
+    // Find the first occurrence on or after today
+    let current = new Date(startDate);
+    // Align to target weekday
+    while (current.getDay() !== targetDay) {
+      current.setDate(current.getDate() + 1);
+    }
+
+    // If starting date is before series start, move forward
+    while (current < startDate) {
+      current.setDate(current.getDate() + 7 * frequency);
+    }
+
+    // Generate all dates from today to end
+    while (current <= endDate) {
+      const dateStr = current.toISOString().split('T')[0];
+      // Only include dates from today onwards that are not cancelled
+      if (current >= today && !cancelledDates.has(dateStr)) {
+        dates.push(dateStr);
+      }
+      current.setDate(current.getDate() + 7 * frequency);
+    }
+
+    return dates;
+  }
+
   // ================== Actions (single appointments) ==================
 
   navigateToDay(dateStr: string): void {
@@ -1031,12 +1291,13 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     this.seriesService.addCancellations(series.id, [cancellation]).subscribe({
       next: (updated) => {
         this.toastService.show('Ausfall eingetragen', 'success');
-        // Update the series in the list
+        // Update the series in the list and in the modal
         this.allSeries.update(list =>
           list.map(s => s.id === updated.id ? updated : s)
         );
+        this.cancellationSeries.set(updated);
+        this.newCancellationDate = '';
         this.applyFilters();
-        this.closeCancellationModal();
       },
       error: () => {
         this.toastService.show('Fehler beim Eintragen des Ausfalls', 'error');
@@ -1044,9 +1305,90 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     });
   }
 
+  removeCancellation(seriesId: number, cancellationId: number): void {
+    this.deletingCancellation.set(true);
+    this.seriesService.deleteCancellation(seriesId, cancellationId).subscribe({
+      next: (updated) => {
+        this.toastService.show('Ausfall entfernt', 'success');
+        // Update the series in the list and in the modal
+        this.allSeries.update(list =>
+          list.map(s => s.id === updated.id ? updated : s)
+        );
+        this.cancellationSeries.set(updated);
+        this.applyFilters();
+        this.deletingCancellation.set(false);
+      },
+      error: () => {
+        this.toastService.show('Fehler beim Entfernen des Ausfalls', 'error');
+        this.deletingCancellation.set(false);
+      }
+    });
+  }
+
+  getWeekdayName(dateStr: string): string {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+    return weekdays[date.getDay()];
+  }
+
   confirmDeleteSeries(series: AppointmentSeries): void {
     this.seriesToDelete.set(series);
     this.showDeleteSeriesModal.set(true);
+  }
+
+  openSeriesEditModal(series: AppointmentSeries): void {
+    this.editingSeries.set(series);
+    // Populate form with current values
+    this.seriesEditForm = {
+      startTime: series.startTime ? series.startTime.substring(0, 5) : '',
+      endTime: series.endTime ? series.endTime.substring(0, 5) : '',
+      endDate: series.endDate ? series.endDate.split('T')[0] : '',
+      weeklyFrequency: series.weeklyFrequency || 1,
+      comment: series.comment || '',
+      isHotair: series.isHotair || false,
+      isUltrasonic: series.isUltrasonic || false,
+      isElectric: series.isElectric || false
+    };
+    this.showSeriesEditModal.set(true);
+  }
+
+  closeSeriesEditModal(): void {
+    this.showSeriesEditModal.set(false);
+    this.editingSeries.set(null);
+  }
+
+  saveSeriesEdit(): void {
+    const series = this.editingSeries();
+    if (!series) return;
+
+    this.savingSeriesEdit.set(true);
+
+    // Build the update request - use a reference date for times
+    const refDate = new Date().toISOString().split('T')[0];
+    const request: UpdateAppointmentSeriesRequest = {
+      startTime: this.seriesEditForm.startTime ? `${refDate}T${this.seriesEditForm.startTime}:00.000` : undefined,
+      endTime: this.seriesEditForm.endTime ? `${refDate}T${this.seriesEditForm.endTime}:00.000` : undefined,
+      endDate: this.seriesEditForm.endDate ? `${this.seriesEditForm.endDate}T00:00:00.000` : undefined,
+      weeklyFrequency: this.seriesEditForm.weeklyFrequency,
+      comment: this.seriesEditForm.comment || undefined,
+      isHotair: this.seriesEditForm.isHotair,
+      isUltrasonic: this.seriesEditForm.isUltrasonic,
+      isElectric: this.seriesEditForm.isElectric
+    };
+
+    this.seriesService.update(series.id, request).subscribe({
+      next: () => {
+        this.toastService.show('Serie aktualisiert', 'success');
+        this.loadSeries(); // Reload series list
+        this.closeSeriesEditModal();
+        this.savingSeriesEdit.set(false);
+      },
+      error: () => {
+        this.toastService.show('Fehler beim Speichern der Serie', 'error');
+        this.savingSeriesEdit.set(false);
+      }
+    });
   }
 
   deleteSeries(): void {

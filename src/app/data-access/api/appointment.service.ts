@@ -18,6 +18,7 @@ export interface Appointment {
   isElectric: boolean;
   isBWO: boolean;
   createdBySeriesAppointment: boolean;
+  appointmentSeriesId?: number;
   createdAt: string;
 }
 

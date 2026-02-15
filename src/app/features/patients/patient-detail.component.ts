@@ -27,10 +27,6 @@ import { ToastService } from '../../core/services/toast.service';
           <div class="card form-card">
             <div class="card-title-row">
               <h2>Stammdaten</h2>
-              <label class="status-toggle">
-                <input type="checkbox" [(ngModel)]="editForm.isActive" />
-                <span class="toggle-label">{{ editForm.isActive ? 'Aktiv' : 'Inaktiv' }}</span>
-              </label>
             </div>
 
             <div class="form-section">
@@ -95,6 +91,11 @@ import { ToastService } from '../../core/services/toast.service';
                 BWO (Behandlung ohne Verordnung)
               </label>
 
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="editForm.isActive" />
+                Aktiver Patient
+              </label>
+
               <div class="form-actions">
                 <button class="btn-save" (click)="savePatient()" [disabled]="saving()">
                   {{ saving() ? 'Speichern...' : 'Speichern' }}
@@ -117,6 +118,11 @@ import { ToastService } from '../../core/services/toast.service';
                 <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
                 <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
               </div>
+              <div class="filter-tabs type-filter">
+                <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
+                <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
+                <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
+              </div>
               <div class="status-filter">
                 @for (s of allStatuses; track s.value) {
                   <button class="status-chip" [class.active]="filterStatus === s.value"
@@ -137,6 +143,7 @@ import { ToastService } from '../../core/services/toast.service';
                       <th>Datum</th>
                       <th>Zeit</th>
                       <th>Therapeut</th>
+                      <th>Typ</th>
                       <th>Behandlung</th>
                       <th>Status</th>
                       <th>Kommentar</th>
@@ -151,6 +158,15 @@ import { ToastService } from '../../core/services/toast.service';
                         <td class="col-time">{{ formatTime(apt.startTime) }}–{{ formatTime(apt.endTime) }} Uhr</td>
                         <td>
                           <a [routerLink]="['/dashboard/therapists', apt.therapistId]" (click)="$event.stopPropagation()">{{ apt.therapistName }}</a>
+                        </td>
+                        <td>
+                          <div class="type-tags">
+                            @if (apt.createdBySeriesAppointment) {
+                              <span class="tag series">Serie</span>
+                            } @else {
+                              <span class="tag single">Einzel</span>
+                            }
+                          </div>
                         </td>
                         <td>
                           <div class="treatment-tags">
@@ -228,6 +244,8 @@ import { ToastService } from '../../core/services/toast.service';
     .filter-tabs button:first-child { border-radius: 4px 0 0 4px; }
     .filter-tabs button:last-child { border-radius: 0 4px 4px 0; }
     .filter-tabs button.active { background: #3B82F6; border-color: #3B82F6; color: white; }
+    .filter-tabs.type-filter { margin-left: 0.5rem; }
+    .filter-tabs.type-filter button.active { background: #8B5CF6; border-color: #8B5CF6; }
     .status-filter { display: flex; gap: 0.25rem; margin-left: auto; flex-wrap: wrap; }
     .status-chip { padding: 0.15rem 0.4rem; border: 1px solid #E5E7EB; background: white; border-radius: 4px; font-size: 0.6rem; cursor: pointer; color: #6B7280; }
     .status-chip.active { background: #EFF6FF; border-color: #3B82F6; color: #2563EB; }
@@ -247,7 +265,10 @@ import { ToastService } from '../../core/services/toast.service';
     .apt-table a { color: #3B82F6; text-decoration: none; font-weight: 500; }
     .apt-table a:hover { text-decoration: underline; }
     .treatment-tags { display: flex; gap: 2px; }
+    .type-tags { display: flex; gap: 3px; }
     .tag { display: inline-block; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.6rem; font-weight: 600; }
+    .tag.series { background: #EDE9FE; color: #5B21B6; }
+    .tag.single { background: #E5E7EB; color: #6B7280; }
     .tag.hotair { background: #FEE2E2; color: #991B1B; }
     .tag.ultra { background: #EDE9FE; color: #5B21B6; }
     .tag.electro { background: #D1FAE5; color: #065F46; }
@@ -273,6 +294,7 @@ export class PatientDetailComponent implements OnInit {
   loadingAppointments = signal(true);
   saving = signal(false);
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
+  appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   filterStatus = '';
 
   editForm = {
@@ -302,6 +324,7 @@ export class PatientDetailComponent implements OnInit {
   filteredAppointments = computed(() => {
     let apts = this.appointments();
     const filter = this.appointmentFilter();
+    const typeFilter = this.appointmentTypeFilter();
     const today = new Date().toISOString().split('T')[0];
 
     switch (filter) {
@@ -310,6 +333,15 @@ export class PatientDetailComponent implements OnInit {
         break;
       case 'past':
         apts = apts.filter(a => a.date < today);
+        break;
+    }
+
+    switch (typeFilter) {
+      case 'series':
+        apts = apts.filter(a => a.createdBySeriesAppointment);
+        break;
+      case 'single':
+        apts = apts.filter(a => !a.createdBySeriesAppointment);
         break;
     }
 
@@ -390,6 +422,10 @@ export class PatientDetailComponent implements OnInit {
 
   setAppointmentFilter(filter: 'upcoming' | 'past' | 'all'): void {
     this.appointmentFilter.set(filter);
+  }
+
+  setAppointmentTypeFilter(filter: 'all' | 'series' | 'single'): void {
+    this.appointmentTypeFilter.set(filter);
   }
 
   toggleStatusFilter(status: string): void {

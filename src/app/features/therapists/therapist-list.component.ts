@@ -1,6 +1,7 @@
 import { Component, OnInit, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Therapist, TherapistService } from '../../data-access/api/therapist.service';
 import { ToastService } from '../../core/services/toast.service';
 
@@ -34,7 +35,7 @@ type SortDirection = 'asc' | 'desc';
           </thead>
           <tbody>
             @for (therapist of filteredTherapists(); track therapist.id) {
-              <tr class="row-clickable" (click)="editTherapist(therapist)">
+              <tr class="row-clickable" (click)="goToDetail(therapist)">
                 <td class="name-cell">{{ therapist.fullName || therapist.firstName + ' ' + therapist.lastName }}</td>
                 <td>{{ therapist.email || '-' }}</td>
                 <td>{{ therapist.telefon || '-' }}</td>
@@ -171,12 +172,13 @@ export class TherapistListComponent implements OnInit {
     return result;
   });
 
-  constructor(private therapistService: TherapistService, private toast: ToastService) {}
+  constructor(private therapistService: TherapistService, private toast: ToastService, private router: Router) {}
   ngOnInit() { this.loadTherapists(); }
   loadTherapists() { this.therapistService.getAll().subscribe({ next: (data) => this.therapists.set(data), error: () => this.toast.error('Fehler beim Laden') }); }
   onSearch(event: Event) { this.searchTerm.set((event.target as HTMLInputElement).value); }
   sort(field: SortField) { if (this.sortField() === field) { this.sortDirection.set(this.sortDirection() === 'asc' ? 'desc' : 'asc'); } else { this.sortField.set(field); this.sortDirection.set('asc'); } }
   getSortIcon(field: SortField): string { return this.sortField() !== field ? '' : this.sortDirection() === 'asc' ? '↑' : '↓'; }
+  goToDetail(t: Therapist) { this.router.navigate(['/dashboard/therapists', t.id]); }
   openCreateModal() { this.editingId = null; this.formData = { firstName: '', lastName: '', email: '', telefon: '', isActive: true, userName: '', password: '' }; this.showModal = true; }
   editTherapist(t: Therapist) { this.editingId = t.id; this.formData = { firstName: t.firstName || '', lastName: t.lastName || '', email: t.email || '', telefon: t.telefon || '', isActive: t.isActive ?? true, userName: '', password: '' }; this.showModal = true; }
   confirmDelete(t: Therapist) { this.therapistToDelete = t; this.showDeleteModal = true; }

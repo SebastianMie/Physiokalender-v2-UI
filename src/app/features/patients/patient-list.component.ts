@@ -541,20 +541,7 @@ export class PatientListComponent implements OnInit {
   }
 
   showPatientDetail(patient: Patient) {
-    this.selectedPatient.set(patient);
-    this.detailFormData = {
-      firstName: patient.firstName || '',
-      lastName: patient.lastName || '',
-      email: patient.email || '',
-      telefon: patient.telefon || '',
-      street: patient.street || '',
-      houseNumber: patient.houseNumber || '',
-      postalCode: patient.postalCode || '',
-      city: patient.city || '',
-      isBWO: patient.isBWO ?? false
-    };
-    this.appointmentViewMode = 'single';
-    this.showPatientDetailModal = true;
+    this.router.navigate(['/dashboard/patients', patient.id]);
   }
 
   closePatientDetailModal() {

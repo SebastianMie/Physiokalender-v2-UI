@@ -170,7 +170,7 @@ import { ToastService } from '../../core/services/toast.service';
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
                         <td class="col-time">{{ formatTime(apt.startTime) }}–{{ formatTime(apt.endTime) }} Uhr</td>
                         <td class="col-patient">
-                          <button class="link-blue" (click)="showPatientDetailModal(apt.patientId, apt.patientName)">{{ apt.patientName || 'Kein Patient' }}</button>
+                          <a [routerLink]="['/dashboard/patients', apt.patientId]" class="link-blue">{{ apt.patientName || 'Kein Patient' }}</a>
                           @if (apt.isBWO) { <span class="tag bwo">BWO</span> }
                         </td>
                         <td class="col-therapist">

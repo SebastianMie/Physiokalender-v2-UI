@@ -73,7 +73,7 @@ import { ToastService } from '../../../core/services/toast.service';
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      background: linear-gradient(135deg, #0066CC 0%, #0099FF 100%);
+      background: linear-gradient(135deg, #0066CC 0%, #F5F5F5 100%);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 

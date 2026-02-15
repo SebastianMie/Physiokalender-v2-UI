@@ -33,6 +33,10 @@ export interface CreatePatientRequest {
   houseNumber?: string;
   postalCode?: string;
   city?: string;
+  dateOfBirth?: string;
+  insuranceType?: string;
+  notes?: string;
+  isActive?: boolean;
   isBWO?: boolean;
 }
 

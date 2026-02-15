@@ -441,7 +441,7 @@ interface NewPatientForm {
                 <div class="form-group full-width">
                   <label class="checkbox-label">
                     <input type="checkbox" [(ngModel)]="newPatient.isBWO" name="pBWO" />
-                    BWO (Behandlung ohne Verordnung)
+                    BWO (Behindertenwerkstatt Oberberg)
                   </label>
                 </div>
               </div>

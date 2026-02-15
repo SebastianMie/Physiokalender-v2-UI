@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService, User } from '../../core/auth/auth.service';
 import { DailyListComponent } from '../calendar/daily-list.component';
+import { AppointmentFinderComponent } from '../appointments/appointment-finder.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, DailyListComponent],
+  imports: [CommonModule, RouterLink, DailyListComponent, AppointmentFinderComponent],
   template: `
     <div class="dashboard">
       <div class="welcome-banner">
@@ -37,10 +38,22 @@ import { DailyListComponent } from '../calendar/daily-list.component';
             <span>Benutzer</span>
           </a>
         }
+        <button class="quick-link finder-toggle" (click)="toggleFinder()">
+          <span class="ql-icon">🔍</span>
+          <span>{{ showFinder() ? 'Terminfinder ausblenden' : 'Terminfinder' }}</span>
+        </button>
       </div>
 
-      <div class="calendar-wrapper">
-        <app-daily-list [embedded]="true"></app-daily-list>
+      <div class="main-content">
+        <div class="calendar-wrapper" [class.with-finder]="showFinder()">
+          <app-daily-list [embedded]="true"></app-daily-list>
+        </div>
+
+        @if (showFinder()) {
+          <div class="finder-panel">
+            <app-appointment-finder></app-appointment-finder>
+          </div>
+        }
       </div>
     </div>
   `,
@@ -83,21 +96,68 @@ import { DailyListComponent } from '../calendar/daily-list.component';
       color: #374151;
       font-size: 0.8rem;
       transition: all 0.15s;
+      cursor: pointer;
     }
     .quick-link:hover {
       border-color: #3B82F6;
       color: #3B82F6;
       background: #EFF6FF;
     }
+    .finder-toggle {
+      border-color: #3B82F6;
+      color: #3B82F6;
+    }
     .ql-icon { font-size: 1rem; }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
     .calendar-wrapper {
       flex: 1;
       overflow: hidden;
+      transition: flex 0.2s ease;
+    }
+
+    .calendar-wrapper.with-finder {
+      flex: 2;
+    }
+
+    .finder-panel {
+      width: 380px;
+      min-width: 320px;
+      max-width: 420px;
+      border-left: 1px solid #E5E7EB;
+      background: #F9FAFB;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 0.75rem;
+    }
+
+    @media (max-width: 900px) {
+      .main-content {
+        flex-direction: column;
+      }
+      .finder-panel {
+        width: 100%;
+        max-width: 100%;
+        min-width: 100%;
+        border-left: none;
+        border-top: 1px solid #E5E7EB;
+        max-height: 50vh;
+      }
+      .calendar-wrapper.with-finder {
+        flex: 1;
+      }
     }
   `]
 })
 export class DashboardComponent implements OnInit {
   currentUser = signal<User | null>(null);
+  showFinder = signal(false);
 
   constructor(private authService: AuthService) {}
 
@@ -107,5 +167,9 @@ export class DashboardComponent implements OnInit {
 
   isAdmin(): boolean {
     return this.currentUser()?.role === 'ADMIN';
+  }
+
+  toggleFinder(): void {
+    this.showFinder.update(v => !v);
   }
 }

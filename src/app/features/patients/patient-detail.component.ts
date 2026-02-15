@@ -94,7 +94,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
 
                 <label class="checkbox-label">
                   <input type="checkbox" [(ngModel)]="editForm.isBWO" />
-                  BWO (Behandlung ohne Verordnung)
+                  BWO (Behindertenwerkstatt Oberberg)
                 </label>
 
                 <label class="checkbox-label">

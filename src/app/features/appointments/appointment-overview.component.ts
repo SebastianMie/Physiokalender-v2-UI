@@ -367,7 +367,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                   <option [ngValue]="d">{{ formatDateDE(d) }} ({{ getWeekdayName(d) }})</option>
                 }
               </select>
-              <button class="btn-primary" [disabled]="!newCancellationDate" (click)="saveCancellation()">Hinzufügen</button>
+              <button class="btn btn-primary" [disabled]="!newCancellationDate" (click)="saveCancellation()">Hinzufügen</button>
             </div>
             @if (availableCancellationDates().length === 0) {
               <p class="no-dates-hint">Keine verfügbaren Termine mehr.</p>
@@ -474,7 +474,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 
             <div class="modal-actions-bar">
               <button type="button" class="btn-secondary" (click)="closeSeriesEditModal()">Abbrechen</button>
-              <button type="submit" class="btn-primary" [disabled]="savingSeriesEdit()">
+              <button type="submit" class="btn btn-primary" [disabled]="savingSeriesEdit()">
                 {{ savingSeriesEdit() ? 'Speichern...' : 'Speichern' }}
               </button>
             </div>
@@ -511,7 +511,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
           </div>
           <div class="modal-actions-bar">
             <button class="btn-secondary" (click)="closePatientDetail()">Schließen</button>
-            <button class="btn-primary" (click)="navigateToPatient(selectedPatient()!.id); closePatientDetail()">Zum Patienten</button>
+            <button class="btn btn-primary" (click)="navigateToPatient(selectedPatient()!.id); closePatientDetail()">Zum Patienten</button>
           </div>
         </div>
       </div>

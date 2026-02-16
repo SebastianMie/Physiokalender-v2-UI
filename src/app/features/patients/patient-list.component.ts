@@ -19,7 +19,7 @@ type SortDirection = 'asc' | 'desc';
     <div class="container">
       <div class="header">
         <h1>Patienten-Verwaltung</h1>
-        <button class="btn-primary" (click)="openCreateModal()">+ Neuer Patient</button>
+        <button class="btn btn-primary" (click)="openCreateModal()">+ Neuer Patient</button>
       </div>
 
       <div class="card">
@@ -106,8 +106,8 @@ type SortDirection = 'asc' | 'desc';
               <hr class="divider" />
               <div class="form-group checkbox-group"><label><input type="checkbox" [(ngModel)]="formData.isBWO" name="isBWO" /> BWO Patient</label></div>
               <div class="modal-actions">
-                <button type="button" class="btn-secondary" (click)="closeModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary">Speichern</button>
+                <button type="button" class="btn btn-secondary" (click)="closeModal()">Abbrechen</button>
+                <button type="submit" class="btn btn-primary">Speichern</button>
               </div>
             </form>
           </div>
@@ -173,8 +173,8 @@ type SortDirection = 'asc' | 'desc';
                   </div>
 
                   <div class="form-actions">
-                    <button type="submit" class="btn-primary">Speichern</button>
-                    <button type="button" class="btn-danger" (click)="deletePatientFromDetail()">Löschen</button>
+                    <button type="submit" class="btn btn-primary">Speichern</button>
+                    <button type="button" class="btn btn-danger" (click)="deletePatientFromDetail()">Löschen</button>
                   </div>
                 </form>
               </div>

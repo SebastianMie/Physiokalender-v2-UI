@@ -354,7 +354,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
               </div>
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closeAbsenceModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary">Speichern</button>
+                <button type="submit" class="btn btn-primary">Speichern</button>
               </div>
             </form>
           </div>

@@ -16,7 +16,7 @@ type SortDirection = 'asc' | 'desc';
     <div class="container">
       <div class="header">
         <h1>Therapeuten-Verwaltung</h1>
-        <button class="btn-primary" (click)="openCreateModal()">+ Neuer Therapeut</button>
+        <button class="btn btn-primary" (click)="openCreateModal()">+ Neuer Therapeut</button>
       </div>
 
       <div class="card">
@@ -72,7 +72,7 @@ type SortDirection = 'asc' | 'desc';
               }
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closeModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary">Speichern</button>
+                <button type="submit" class="btn btn-primary">Speichern</button>
               </div>
             </form>
           </div>

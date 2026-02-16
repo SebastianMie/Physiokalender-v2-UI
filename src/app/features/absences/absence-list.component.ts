@@ -15,7 +15,7 @@ import { ToastService } from '../../core/services/toast.service';
     <div class="container">
       <div class="header">
         <h1>Abwesenheiten</h1>
-        <button class="btn-primary" (click)="openAddModal()">+ Neue Abwesenheit</button>
+        <button class="btn btn-primary" (click)="openAddModal()">+ Neue Abwesenheit</button>
       </div>
 
       <!-- Filters -->
@@ -232,7 +232,7 @@ import { ToastService } from '../../core/services/toast.service';
               </div>
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closeModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary" [disabled]="saving()">
+                <button type="submit" class="btn btn-primary" [disabled]="saving()">
                   {{ saving() ? 'Speichern...' : 'Speichern' }}
                 </button>
               </div>

@@ -432,7 +432,7 @@ interface NewPatientForm {
                   </button>
                 }
                 <div class="spacer"></div>
-                <button type="submit" class="btn-primary"
+                <button type="submit" class="btn btn-primary"
                   [disabled]="!canSaveAppointment() || savingAppointment()">
                   {{ savingAppointment() ? 'Speichern...' : (editingAppointment() ? 'Speichern' : (newAppointment.isSeries ? 'Serie anlegen' : 'Termin anlegen')) }}
                 </button>
@@ -485,7 +485,7 @@ interface NewPatientForm {
             <p>Die Änderungen werden auf <strong>alle zukünftigen Termine</strong> dieser Serie angewendet. Möchten Sie fortfahren?</p>
             <div class="modal-actions">
               <button type="button" class="btn-secondary" (click)="cancelSeriesEdit()">Abbrechen</button>
-              <button type="button" class="btn-primary" (click)="confirmSeriesEdit()">Ja, Serie aktualisieren</button>
+              <button type="button" class="btn btn-primary" (click)="confirmSeriesEdit()">Ja, Serie aktualisieren</button>
             </div>
           </div>
         </div>
@@ -542,7 +542,7 @@ interface NewPatientForm {
               </div>
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closeNewPatientDialog()">Abbrechen</button>
-                <button type="submit" class="btn-primary"
+                <button type="submit" class="btn btn-primary"
                   [disabled]="!newPatient.firstName || !newPatient.lastName || savingPatient()">
                   {{ savingPatient() ? 'Speichern...' : 'Patient anlegen' }}
                 </button>
@@ -565,7 +565,7 @@ interface NewPatientForm {
             </ul>
             <div class="modal-actions">
               <button class="btn-secondary" (click)="closeConflictModal()">Abbrechen</button>
-              <button class="btn-primary" (click)="forceMove()">Trotzdem verschieben</button>
+              <button class="btn btn-primary" (click)="forceMove()">Trotzdem verschieben</button>
             </div>
           </div>
         </div>

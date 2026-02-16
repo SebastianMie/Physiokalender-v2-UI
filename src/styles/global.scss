@@ -73,6 +73,54 @@ button {
   font-family: inherit;
 }
 
+/* Global button styles - consistent, modern look used across the app */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+  border: 0;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease, opacity 120ms ease;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+  user-select: none;
+}
+
+.btn:active { transform: translateY(1px); }
+.btn:focus { outline: 3px solid rgba(37,99,235,0.12); outline-offset: 2px; }
+
+.btn-primary {
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+}
+.btn-primary:hover { background: linear-gradient(180deg,#1D4ED8 0%,#1747b2 100%); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+
+.btn-secondary {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #e6edf3;
+  box-shadow: 0 2px 6px rgba(15,23,36,0.03);
+}
+.btn-secondary:hover { background: #f8fafc; }
+
+.btn-danger {
+  background: linear-gradient(180deg,#ef4444 0%,#dc2626 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(239,68,68,0.12);
+}
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: #374151;
+  padding: 0.25rem 0.5rem;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;

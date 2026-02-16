@@ -88,6 +88,13 @@ const mainRoutes: Routes = [
               ),
           },
           {
+            path: 'audit',
+            loadComponent: () =>
+              import('./features/admin/audit-events.component').then(
+                (m) => m.AuditEventsComponent
+              ),
+          },
+          {
             path: 'settings',
             loadComponent: () =>
               import('./features/admin/settings.component').then(

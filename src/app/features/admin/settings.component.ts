@@ -47,7 +47,7 @@ interface Holiday {
             }
           </div>
           <div class="actions">
-            <button class="btn-primary" (click)="saveOpeningHours()">Öffnungszeiten speichern</button>
+            <button class="btn btn-primary" (click)="saveOpeningHours()">Öffnungszeiten speichern</button>
           </div>
         </div>
       </div>
@@ -128,7 +128,7 @@ interface Holiday {
             </div>
           </div>
           <div class="actions">
-            <button class="btn-primary" (click)="saveGeneralSettings()">Einstellungen speichern</button>
+            <button class="btn btn-primary" (click)="saveGeneralSettings()">Einstellungen speichern</button>
           </div>
         </div>
       </div>

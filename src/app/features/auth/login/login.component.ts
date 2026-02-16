@@ -52,7 +52,7 @@ import { ToastService } from '../../../core/services/toast.service';
 
           <button
             type="submit"
-            class="btn-primary"
+            class="btn btn-primary"
             [disabled]="!form.valid || loading"
           >
             {{ loading ? 'Wird angemeldet...' : 'Anmelden' }}

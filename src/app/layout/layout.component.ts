@@ -52,6 +52,9 @@ import { takeUntil } from 'rxjs/operators';
                     <a routerLink="/dashboard/admin/users" routerLinkActive="active" class="dropdown-item">
                       Benutzer
                     </a>
+                    <a routerLink="/dashboard/admin/audit" routerLinkActive="active" class="dropdown-item">
+                      Audit‑Events
+                    </a>
                     <div class="dropdown-divider"></div>
                     <a routerLink="/dashboard/admin/settings" routerLinkActive="active" class="dropdown-item">
                       Stammdaten
@@ -107,7 +110,7 @@ import { takeUntil } from 'rxjs/operators';
               </div>
               <div class="modal-actions">
                 <button type="button" class="btn-secondary" (click)="closePasswordModal()">Abbrechen</button>
-                <button type="submit" class="btn-primary">Speichern</button>
+                <button type="submit" class="btn btn-primary">Speichern</button>
               </div>
             </form>
           </div>

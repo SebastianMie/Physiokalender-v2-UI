@@ -6,13 +6,17 @@ import { AuthService } from '../core/auth/auth.service';
 import { ToastService } from '../core/services/toast.service';
 import { EnvironmentService } from '../core/services/environment.service';
 import { EnvironmentBannerComponent } from '../shared/ui/environment-banner/environment-banner.component';
+import { PatientService } from '../data-access/api/patient.service';
+import { AppointmentService } from '../data-access/api/appointment.service';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+
+import { SearchbarComponent } from '../shared/ui/searchbar.component';
 
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, EnvironmentBannerComponent],
+  imports: [CommonModule, RouterModule, FormsModule, EnvironmentBannerComponent, SearchbarComponent],
   template: `
     <div class="layout-container" [class.has-env-banner]="environmentService.showBanner()">
       <!-- Environment Banner -->
@@ -65,6 +69,13 @@ import { takeUntil } from 'rxjs/operators';
             }
           </nav>
           <div class="user-section">
+            <app-searchbar
+              [results]="searchResults"
+              (search)="onSearch($event)"
+              (enter)="onSearchImmediate($event)"
+              (select)="onSelectResult($event)"
+              placeholder="Termine suchen..."
+            />
             <div class="user-dropdown">
               <button class="user-avatar" [title]="currentUser?.username" (click)="userDropdownOpen = !userDropdownOpen">
                 <span class="avatar-icon">👤</span>
@@ -274,6 +285,20 @@ import { takeUntil } from 'rxjs/operators';
       flex-shrink: 0;
     }
 
+    /* Header searchbar sizing — broader and spaced from user avatar */
+    .user-section app-searchbar, .header-content .searchbar-container {
+      flex: 0 0 70%;
+      max-width: 1400px;
+      min-width: 400px;
+      margin-left: 0.5rem;
+      margin-right: 1.5rem; /* ensure spacing to user avatar */
+    }
+
+    @media (max-width: 1200px) {
+      /* keep hidden on smaller screens */
+      .user-section app-searchbar, .header-content .searchbar-container { display: none; }
+    }
+
     .user-dropdown {
       position: relative;
     }
@@ -282,8 +307,10 @@ import { takeUntil } from 'rxjs/operators';
       width: 40px;
       height: 40px;
       border-radius: 50%;
+      overflow: hidden; /* ensure perfectly round */
       background: linear-gradient(135deg, #2563EB, #1D4ED8);
       border: none;
+      outline: none;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -292,7 +319,11 @@ import { takeUntil } from 'rxjs/operators';
 
       &:hover {
         transform: scale(1.05);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        box-shadow: 0 6px 18px rgba(2,6,23,0.08);
+      }
+      &:focus {
+        outline: none;
+        box-shadow: 0 6px 18px rgba(2,6,23,0.12);
       }
     }
 
@@ -480,6 +511,77 @@ import { takeUntil } from 'rxjs/operators';
   `]
 })
 export class LayoutComponent implements OnInit, OnDestroy {
+    searchResults: any[] = [];
+    searchTimeout: any;
+    private patientService = inject(PatientService);
+    private appointmentService = inject(AppointmentService);
+
+    onSearch(term: string) {
+      // debounced search after 3 characters
+      clearTimeout(this.searchTimeout);
+      if (!term || term.length < 3) {
+        this.searchResults = [];
+        return;
+      }
+      this.searchTimeout = setTimeout(() => {
+        this.fetchSearchResults(term);
+      }, 300);
+    }
+
+    onSearchImmediate(term: string) {
+      // Enter key -> run immediate search (only when user typed >= 3 chars)
+      clearTimeout(this.searchTimeout);
+      if (!term || term.length < 3) {
+        this.searchResults = [];
+        return;
+      }
+      this.fetchSearchResults(term);
+    }
+
+    fetchSearchResults(term: string) {
+      // Nur Termine serverseitig suchen (dateFrom as yyyy-MM-dd)
+      const dateOnly = new Date().toISOString().split('T')[0];
+      this.appointmentService.getPaginated({ search: term, dateFrom: dateOnly, size: 30 }).subscribe({
+        // request more results so dropdown can scroll when there are many matches
+        next: (res: any) => {
+          const appointmentResults = (res.content || []).map((a: any) => ({
+            type: 'appointment',
+            id: a.id,
+            date: a.date,
+            patientName: a.patientName,
+            appointment: a
+          }));
+          // sort by appointment datetime ascending (soonest/upcoming first)
+          appointmentResults.sort((a: any, b: any) => {
+            const aTime = new Date(a.appointment?.startTime || a.date || 0).getTime();
+            const bTime = new Date(b.appointment?.startTime || b.date || 0).getTime();
+            return aTime - bTime; // ascending => soonest first
+          });
+          // Show only appointments in the header search for now
+          this.searchResults = appointmentResults;
+        },
+        error: () => {
+          this.searchResults = [];
+        }
+      });
+    }
+
+    updateSearchResults(patientResults: any[], appointmentResults: any[]) {
+      this.searchResults = [...patientResults, ...appointmentResults];
+    }
+
+    onSelectResult(result: any) {
+      if (result.type === 'appointment') {
+        // Navigiere zum Kalender und öffne den Termin (verwende vorhandenes queryParam `editId`)
+        const date = result.date || (result.appointment && result.appointment.date);
+        const params: any = { editId: result.id };
+        if (date) params.date = date;
+        this.router.navigate(['/dashboard/calendar'], { queryParams: params });
+      } else if (result.type === 'patient') {
+        // Navigiere zum Patientendetail
+        this.router.navigate(['/dashboard/patients', result.id]);
+      }
+    }
   private elementRef = inject(ElementRef);
   environmentService = inject(EnvironmentService);
   currentUser: any;

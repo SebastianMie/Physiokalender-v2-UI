@@ -1,7 +1,7 @@
 import { Component, OnInit, Input, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterModule, ActivatedRoute } from '@angular/router';
+import { RouterModule, ActivatedRoute, Router } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { AppointmentService, Appointment, MoveAppointmentRequest, CreateAppointmentRequest } from '../../data-access/api/appointment.service';
 import { AppointmentSeriesService, CreateAppointmentSeriesRequest, UpdateAppointmentSeriesRequest } from '../../data-access/api/appointment-series.service';
@@ -304,14 +304,23 @@ interface NewPatientForm {
                         </div>
                       }
                     </div>
-                    <button type="button" class="btn-new-patient" (click)="openNewPatientDialog()">+ Neu</button>
+                    <button type="button" class="btn-new-patient" (click)="openNewPatientDialog()">+</button>
                   </div>
                 </div>
 
-                <!-- Datum (Startdatum bei Serie) -->
+                <!-- Datum (Startdatum bei Serie) — zwei gleiche Spalten (Datum | Hinweis) -->
                 <div class="form-group">
                   <label>{{ newAppointment.isSeries ? 'Startdatum *' : 'Datum *' }}</label>
-                  <input type="date" [(ngModel)]="newAppointment.date" name="date" required />
+                  <input type="date"
+                         [(ngModel)]="newAppointment.date"
+                         name="date"
+                         required
+                         [disabled]="!!(editingAppointment()?.createdBySeriesAppointment && editMode() === 'series')" />
+                </div>
+                <div class="form-group note-column">
+                  @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
+                    <div class="form-note">Datum wird bei Serienänderungen ignoriert</div>
+                  }
                 </div>
 
                 <!-- Enddatum (nur bei Serie) -->
@@ -320,37 +329,45 @@ interface NewPatientForm {
                     <label>Enddatum *</label>
                     <input type="date" [(ngModel)]="newAppointment.seriesEndDate" name="seriesEndDate" required [min]="newAppointment.date" />
                   </div>
-                }
 
-                <!-- Zeiten -->
-                <div class="form-row time-row-centered">
-                  <div class="form-group time-group">
-                    <label>Beginn *</label>
-                    <div class="time-hpicker">
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.startTime) }}</span>
-                      <span class="tp-colon">:</span>
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.startTime) }}</span>
-                      <span class="tp-label">Uhr</span>
+                  <!-- Serien-Optionen (jetzt oberhalb der Uhrzeiten) -->
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Intervall *</label>
+                      <select [(ngModel)]="newAppointment.weeklyFrequency" name="weeklyFrequency" required>
+                        <option [ngValue]="1">Jede Woche</option>
+                        <option [ngValue]="2">Alle 2 Wochen</option>
+                        <option [ngValue]="3">Alle 3 Wochen</option>
+                        <option [ngValue]="4">Alle 4 Wochen</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Wochentag *</label>
+                      <select [(ngModel)]="newAppointment.weekday" name="weekday" required>
+                        <option value="" disabled>W&auml;hlen...</option>
+                        <option value="MONDAY">Montag</option>
+                        <option value="TUESDAY">Dienstag</option>
+                        <option value="WEDNESDAY">Mittwoch</option>
+                        <option value="THURSDAY">Donnerstag</option>
+                        <option value="FRIDAY">Freitag</option>
+                      </select>
                     </div>
                   </div>
-                  <div class="form-group time-group">
-                    <label>Ende *</label>
-                    <div class="time-hpicker">
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.endTime) }}</span>
-                      <span class="tp-colon">:</span>
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.endTime) }}</span>
-                      <span class="tp-label">Uhr</span>
-                    </div>
-                  </div>
-                </div>
+                }
 
                 <!-- Series Edit Options (Enddatum und Intervall bei Serie bearbeiten) -->
                 @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
                   <div class="form-row">
                     <div class="form-group">
-                      <label>Enddatum</label>
-                      <input type="date" [(ngModel)]="seriesEditEndDate" name="seriesEditEndDate" [min]="newAppointment.date" />
+                      <label>Startdatum</label>
+                      <input type="date" [(ngModel)]="seriesEditStartDate" name="seriesEditStartDate" />
                     </div>
+                    <div class="form-group">
+                      <label>Enddatum</label>
+                      <input type="date" [(ngModel)]="seriesEditEndDate" name="seriesEditEndDate" [min]="seriesEditStartDate || newAppointment.date" />
+                    </div>
+                  </div>
+                  <div class="form-row">
                     <div class="form-group">
                       <label>Intervall</label>
                       <select [(ngModel)]="seriesEditWeeklyFrequency" name="seriesEditWeeklyFrequency">
@@ -358,6 +375,17 @@ interface NewPatientForm {
                         <option [ngValue]="2">Alle 2 Wochen</option>
                         <option [ngValue]="3">Alle 3 Wochen</option>
                         <option [ngValue]="4">Alle 4 Wochen</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Wochentag</label>
+                      <select [(ngModel)]="newAppointment.weekday" name="weekday">
+                        <option value="" disabled>W&auml;hlen...</option>
+                        <option value="MONDAY">Montag</option>
+                        <option value="TUESDAY">Dienstag</option>
+                        <option value="WEDNESDAY">Mittwoch</option>
+                        <option value="THURSDAY">Donnerstag</option>
+                        <option value="FRIDAY">Freitag</option>
                       </select>
                     </div>
                   </div>
@@ -388,6 +416,28 @@ interface NewPatientForm {
                     </div>
                   </div>
                 }
+
+                <!-- Zeiten -->
+                <div class="form-row time-row-centered">
+                  <div class="form-group time-group">
+                    <label>Beginn *</label>
+                    <div class="time-hpicker">
+                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.startTime) }}</span>
+                      <span class="tp-colon">:</span>
+                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.startTime) }}</span>
+                      <span class="tp-label">Uhr</span>
+                    </div>
+                  </div>
+                  <div class="form-group time-group">
+                    <label>Ende *</label>
+                    <div class="time-hpicker">
+                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.endTime) }}</span>
+                      <span class="tp-colon">:</span>
+                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.endTime) }}</span>
+                      <span class="tp-label">Uhr</span>
+                    </div>
+                  </div>
+                </div>
 
                 <!-- Optionen -->
                 <div class="form-row checkboxes">
@@ -661,8 +711,14 @@ interface NewPatientForm {
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
     .modal { background: white; border-radius: 12px; padding: 1.5rem; max-width: 480px; width: 90%; max-height: 90vh; overflow-y: auto; }
     .modal.modal-lg { max-width: 600px; }
-    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; gap: 0.5rem; }
     .modal-header h2 { margin: 0; font-size: 1.25rem; color: #2563EB; }
+    .header-cancel { margin-left: 0.5rem; background: #E5E7EB; color: #374151; border-radius: 6px; padding: 0.35rem 0.6rem; border: none; cursor: pointer; font-weight: 600; }
+    .header-cancel:hover { background: #D1D5DB; }
+    .selected-patient-tag { display: inline-flex; align-items: center; gap: 0.5rem; background: #EFF6FF; border: 1px solid #BFDBFE; padding: 0.25rem 0.75rem; border-radius: 16px; font-size: 0.8rem; margin-top: 0.5rem; color: #1E40AF; }
+    .selected-patient-tag .patient-actions { display: inline-flex; gap: 0.25rem; align-items: center; }
+    .btn-details { background: none; border: none; color: #3B82F6; cursor: pointer; font-size: 0.8rem; padding: 0; }
+    .btn-details:hover { text-decoration: underline; }
     .btn-close { border: none; background: none; font-size: 1.5rem; cursor: pointer; color: #6B7280; padding: 0 0.25rem; }
     .btn-close:hover { color: #111827; }
     .modal h2 { margin: 0 0 1rem 0; color: #2563EB; }
@@ -686,15 +742,24 @@ interface NewPatientForm {
     /* Form Styles */
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .form-group { display: flex; flex-direction: column; gap: 0.25rem; }
+
+    /* Note column for date — use same two-column grid sizing as other .form-group siblings */
+    .form-group.note-column { display: flex; align-items: center; padding-top: 0.3rem; }
+    .form-note { font-size: 0.85rem; color: #6B7280; margin: 0; }
+
+    @media (max-width: 420px) {
+      .form-group.note-column { padding-top: 0; }
+      .form-note { font-size: 0.85rem; }
+    }
     .form-group.full-width { grid-column: 1 / -1; }
     .form-group label { font-size: 0.8rem; font-weight: 500; color: #374151; }
-    .form-group input, .form-group select, .form-group textarea { padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; outline: none; }
+    .form-group input, .form-group select, .form-group textarea { padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.875rem; outline: none; resize: none; }
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .form-row { grid-column: 1 / -1; display: flex; gap: 1rem; }
     .form-row .form-group { flex: 1; }
     .form-row.checkboxes { flex-wrap: wrap; gap: 1rem; justify-content: center; }
-    .form-row.time-row-centered { justify-content: center; }
-    .form-row.time-row-centered .form-group.time-group { flex: 0 0 auto; min-width: 120px; }
+    .form-row.time-row-centered { justify-content: flex; gap: 1rem; }
+
     .checkbox-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #374151; cursor: pointer; }
     .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: #3B82F6; }
 
@@ -773,6 +838,7 @@ export class DailyListComponent implements OnInit {
   private printService = inject(PrintService);
   private absenceService = inject(AbsenceService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
 
   /** When embedded (e.g. on dashboard), hide view toggle and default to 'all' */
   @Input() embedded = false;
@@ -806,6 +872,7 @@ export class DailyListComponent implements OnInit {
   editMode = signal<'single' | 'series'>('single'); // 'single' = edit this occurrence only, 'series' = edit series master
 
   // Series edit fields (populated when switching to series edit mode)
+  seriesEditStartDate = '';
   seriesEditEndDate = '';
   seriesEditWeeklyFrequency = 1;
 
@@ -1229,17 +1296,20 @@ export class DailyListComponent implements OnInit {
 
   setEditModeSeries(): void {
     this.editMode.set('series');
-    // Load series details to populate endDate and weeklyFrequency
+    // Load series details to populate start/end and weeklyFrequency
     const seriesId = this.editingAppointment()?.appointmentSeriesId;
     if (seriesId) {
       this.seriesService.getById(seriesId).subscribe({
         next: (series) => {
-          // endDate comes as ISO string or null
+          // startDate / endDate come as ISO strings or null
+          this.seriesEditStartDate = series.startDate ? series.startDate.split('T')[0] : this.newAppointment.date;
           this.seriesEditEndDate = series.endDate ? series.endDate.split('T')[0] : '';
           this.seriesEditWeeklyFrequency = series.weeklyFrequency || 1;
+          this.newAppointment.weekday = series.weekday || this.newAppointment.weekday;
         },
         error: () => {
           // Fallback to defaults
+          this.seriesEditStartDate = this.newAppointment.date;
           this.seriesEditEndDate = '';
           this.seriesEditWeeklyFrequency = 1;
         }
@@ -1332,6 +1402,13 @@ export class DailyListComponent implements OnInit {
     if (!this.selectedPatient()) {
       this.showPatientDropdown.set(true);
     }
+  }
+
+  viewPatientDetails(): void {
+    const p = this.selectedPatient();
+    if (!p || !p.id) return;
+    this.closeCreateModal();
+    this.router.navigate(['/dashboard/patients', p.id]);
   }
 
   // ================== New Patient ==================

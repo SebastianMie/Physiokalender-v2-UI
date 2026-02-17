@@ -108,43 +108,22 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
             <div class="card-header">
               <h2>Termine</h2>
               <span class="result-count">{{ totalAppointments() }}</span>
-              <div class="filter-tabs">
-                <button
-                  [class.active]="appointmentFilter() === 'upcoming'"
-                  (click)="setAppointmentFilter('upcoming')">
-                  Kommende
-                </button>
-                <button
-                  [class.active]="appointmentFilter() === 'past'"
-                  (click)="setAppointmentFilter('past')">
-                  Vergangene
-                </button>
-                <button
-                  [class.active]="appointmentFilter() === 'all'"
-                  (click)="setAppointmentFilter('all')">
-                  Alle
-                </button>
-              </div>
-              <div class="filter-tabs type-filter">
-                <button
-                  [class.active]="appointmentTypeFilter() === 'all'"
-                  (click)="setAppointmentTypeFilter('all')">
-                  Alle
-                </button>
-                <button
-                  [class.active]="appointmentTypeFilter() === 'series'"
-                  (click)="setAppointmentTypeFilter('series')">
-                  Serie
-                </button>
-                <button
-                  [class.active]="appointmentTypeFilter() === 'single'"
-                  (click)="setAppointmentTypeFilter('single')">
-                  Einzel
-                </button>
-              </div>
             </div>
 
-            <div class="search-bar">
+            <div class="table-controls">
+              <div class="apt-filters">
+                <div class="filter-tabs">
+                  <button [class.active]="appointmentFilter() === 'upcoming'" (click)="setAppointmentFilter('upcoming')">Kommende</button>
+                  <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
+                  <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
+                </div>
+                <div class="filter-tabs type-filter">
+                  <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
+                  <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
+                  <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
+                </div>
+              </div>
+
               <input
                 type="text"
                 placeholder="Patient suchen..."
@@ -426,13 +405,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     /* Card Header */
     .card-header { display: flex; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
     .result-count { font-size: 0.7rem; color: #6B7280; background: #E5E7EB; padding: 0.1rem 0.4rem; border-radius: 10px; margin-right: auto; }
-    .filter-tabs { display: flex; gap: 0; margin-left: auto; }
-    .filter-tabs button { padding: 0.3rem 0.6rem; border: 1px solid #E5E7EB; background: white; color: #6B7280; font-size: 0.7rem; cursor: pointer; }
-    .filter-tabs button:first-child { border-radius: 4px 0 0 4px; }
-    .filter-tabs button:last-child { border-radius: 0 4px 4px 0; }
-    .filter-tabs button.active { background: #3B82F6; border-color: #3B82F6; color: white; }
-    .filter-tabs.type-filter { margin-left: 0.5rem; }
-    .filter-tabs.type-filter button.active { background: #8B5CF6; border-color: #8B5CF6; }
+    /* filter tab styling moved to global.scss (.filter-tabs) */
 
     .loading-inline, .empty-state { text-align: center; padding: 2rem; color: #6B7280; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
     .loading-spinner-small { width: 16px; height: 16px; border: 2px solid #E5E7EB; border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -458,9 +431,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .apt-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F3F4F6; color: #374151; vertical-align: middle; }
 
     /* Search Bar */
-    .search-bar { padding: 0.75rem 1rem; border-bottom: 1px solid #E5E7EB; }
-    .search-input { width: 100%; max-width: 300px; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 0.8rem; }
-    .search-input:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+    /* search styling moved to global.scss (.table-controls .search-input) */
     .apt-table tbody tr { cursor: pointer; transition: background 0.1s; }
     .apt-table tbody tr:hover { background: #F0F7FF; }
     .apt-table tbody tr.cancelled { opacity: 0.5; }
@@ -672,7 +643,7 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   appointmentSearchTerm = signal('');
   private appointmentSearchSubject = new Subject<string>();
   appointmentSortField = signal<'date' | 'patient'>('date');
-  appointmentSortDir = signal<'asc' | 'desc'>('asc');
+  appointmentSortDir = signal<'asc' | 'desc'>('desc');
 
   // Computed from server response
   serverAppointments = computed(() => this.appointmentServerPage()?.content || []);
@@ -860,7 +831,8 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
       this.appointmentSortDir.set(this.appointmentSortDir() === 'asc' ? 'desc' : 'asc');
     } else {
       this.appointmentSortField.set(field);
-      this.appointmentSortDir.set('asc');
+      // newest-first for date, ascending for other fields
+      this.appointmentSortDir.set(field === 'date' ? 'desc' : 'asc');
     }
     this.appointmentPage.set(0);
     this.fetchAppointments();

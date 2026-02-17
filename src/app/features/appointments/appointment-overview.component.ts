@@ -9,20 +9,17 @@ import { TherapistService, Therapist } from '../../data-access/api/therapist.ser
 import { PatientService } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
 import { AppointmentCacheService } from '../../core/services/appointment-cache.service';
+import { AppointmentModalComponent } from './appointment-modal.standalone.component';
+import { SeriesCancellationsComponent } from './series-cancellations.standalone.component';
 
 @Component({
   selector: 'app-appointment-overview',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, AppointmentModalComponent, SeriesCancellationsComponent],
   template: `
     <div class="overview-container">
       <div class="page-header">
         <h1>Terminübersicht</h1>
-        <div class="view-tabs">
-          <button class="view-tab" [class.active]="viewMode() === 'single'" (click)="setViewMode('single')">Einzeltermine</button>
-          <button class="view-tab" [class.active]="viewMode() === 'series'" (click)="setViewMode('series')">Serientermine</button>
-        </div>
-        <span class="result-count">{{ viewMode() === 'single' ? totalElements() + ' Termine' : filteredSeries().length + ' Serien' }}</span>
       </div>
 
       <div class="overview-layout">
@@ -122,26 +119,28 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 
         <!-- Main Table -->
         <div class="table-section">
-          <div class="search-bar">
-            <input type="text" [ngModel]="searchTerm" (input)="onSearchInput($event)"
-              placeholder="Patient, Therapeut oder Kommentar suchen..." class="search-input" />
-            @if (searchTerm) {
-              <button class="search-clear" (click)="searchTerm = ''; applyFilters()">&times;</button>
-            }
-
-            <!-- Time + Type filters (like patient-detail) -->
+          <div class="table-controls">
+            <!-- Time + Type filters (like patient-detail) + status chips -->
             <div class="apt-filters">
               <div class="filter-tabs">
                 <button [class.active]="appointmentFilter() === 'upcoming'" (click)="setAppointmentFilter('upcoming')">Kommende</button>
                 <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
                 <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
               </div>
-              <div class="filter-tabs type-filter">
-                <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
-                <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
-                <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
-              </div>
+
+            <div style="margin-left: 1rem;" class="filter-tabs">
+              <button [class.active]="viewMode() === 'single'" (click)="setViewMode('single')">Einzeltermine</button>
+              <button [class.active]="viewMode() === 'series'" (click)="setViewMode('series')">Serientermine</button>
             </div>
+            <span class="result-count">{{ viewMode() === 'single' ? totalElements() + ' Termine' : filteredSeries().length + ' Serien' }}</span>
+              </div>
+
+            <!-- Suche (rechts) -->
+            <input type="text" [ngModel]="searchTerm" (input)="onSearchInput($event)"
+              placeholder="Patient, Therapeut oder Kommentar suchen..." class="search-input" />
+            @if (searchTerm) {
+              <button class="search-clear" (click)="searchTerm = ''; applyFilters()">&times;</button>
+            }
           </div>
 
           @if (loading()) {
@@ -183,17 +182,17 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                   </thead>
                   <tbody>
                     @for (apt of paginatedAppointments(); track apt.id) {
-                      <tr class="apt-row"
+                      <tr class="apt-row clickable-row" (click)="navigateToEdit(apt)"
                           [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'">
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
-                        <td class="col-time">{{ formatTime(apt.startTime) }}–{{ formatTime(apt.endTime) }} Uhr</td>
+                        <td class="col-time">{{ formatTime(apt.startTime) }} – {{ formatTime(apt.endTime) }} Uhr</td>
                         <td class="col-patient">
-                          <a [routerLink]="['/dashboard/patients', apt.patientId]" class="link-blue">{{ apt.patientName || 'Kein Patient' }}</a>
+                          <a [routerLink]="['/dashboard/patients', apt.patientId]" class="link-blue" (click)="$event.stopPropagation()">{{ apt.patientName || 'Kein Patient' }}</a>
                           @if (apt.isBWO) { <span class="tag bwo">BWO</span> }
                         </td>
                         <td class="col-therapist">
-                          <a [routerLink]="['/dashboard/therapists', apt.therapistId]">{{ apt.therapistName }}</a>
+                          <a [routerLink]="['/dashboard/therapists', apt.therapistId]" (click)="$event.stopPropagation()">{{ apt.therapistName }}</a>
                         </td>
                         <td class="col-type">
                           <div class="treatment-tags">
@@ -209,8 +208,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                         <td class="col-comment">{{ apt.comment || '–' }}</td>
                         <td class="col-actions-apt">
                           <div class="action-btns">
-                            <button class="action-btn" title="Im Kalender anzeigen" (click)="navigateToDay(apt.date)">&#128197;</button>
-                            <button class="action-btn" title="Termin bearbeiten" (click)="navigateToEdit(apt)">&#9998;</button>
+                            <button class="action-btn" title="Termin bearbeiten" (click)="$event.stopPropagation(); navigateToEdit(apt)">&#9998;</button>
                           </div>
                         </td>
                       </tr>
@@ -257,7 +255,10 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                         Uhrzeit <span class="sort-icon">{{ seriesSortField === 'time' ? (seriesSortDir === 'asc' ? '↑' : '↓') : '⇅' }}</span>
                       </th>
                       <th class="sortable" (click)="toggleSeriesSort('startDate')">
-                        Zeitraum <span class="sort-icon">{{ seriesSortField === 'startDate' ? (seriesSortDir === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                        Startdatum <span class="sort-icon">{{ seriesSortField === 'startDate' ? (seriesSortDir === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
+                      <th class="sortable" (click)="toggleSeriesSort('endDate')">
+                        Enddatum <span class="sort-icon">{{ seriesSortField === 'endDate' ? (seriesSortDir === 'asc' ? '↑' : '↓') : '⇅' }}</span>
                       </th>
                       <th>Intervall</th>
                       <th>Status</th>
@@ -267,7 +268,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                   </thead>
                   <tbody>
                     @for (s of paginatedSeries(); track s.id) {
-                      <tr class="apt-row clickable-row" [class.cancelled]="s.status === 'CANCELLED'" (click)="openSeriesEditModal(s)" title="Klicken zum Bearbeiten">
+                      <tr class="apt-row clickable-row" [class.cancelled]="s.status === 'CANCELLED'" (click)="openSeriesEditModal(s)" (keydown.enter)="openSeriesEditModal(s)" tabindex="0" title="Klicken zum Bearbeiten">
                         <td (click)="$event.stopPropagation()">
                           <a [routerLink]="['/dashboard/patients', s.patientId]" class="link-blue">{{ s.patientName || 'Kein Patient' }}</a>
                         </td>
@@ -275,41 +276,28 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
                           <a [routerLink]="['/dashboard/therapists', s.therapistId]" class="link-gray">{{ s.therapistName }}</a>
                         </td>
                         <td>{{ weekdayLabel(s.weekday) }}</td>
-                        <td class="col-time">{{ formatSeriesTime(s.startTime) }}–{{ formatSeriesTime(s.endTime) }} Uhr</td>
-                        <td class="col-date">{{ formatDateDE(s.startDate) }} – {{ formatDateDE(s.endDate) }}</td>
+                        <td class="col-time">{{ formatSeriesTime(s.startTime) }} – {{ formatSeriesTime(s.endTime) }} Uhr</td>
+                        <td class="col-start-date">{{ formatDateDE(s.startDate) }}</td>
+                        <td class="col-end-date">{{ formatDateDE(s.endDate) }}</td>
                         <td>{{ (s.weeklyFrequency != null) ? (s.weeklyFrequency === 1 ? 'Wöchentlich' : 'Alle ' + s.weeklyFrequency + ' Wo.') : '–' }}</td>
                         <td>
                           <span class="status-badge" [class]="'status-' + s.status.toLowerCase()">{{ seriesStatusLabel(s.status) }}</span>
                         </td>
                         <td>
-                          @if (s.cancellations && s.cancellations.length > 0) {
-                            <span class="cancel-count" title="Ausfälle anzeigen" (click)="toggleCancellationView(s)">
-                              {{ s.cancellations.length }} Ausf.
-                            </span>
-                          } @else {
-                            <span class="no-cancellations">–</span>
-                          }
+                          <span class="cancel-count" [class.zero]="(s.cancellations || []).length === 0" title="Ausfälle anzeigen" role="button" (click)="$event.stopPropagation(); openCancellationModal(s)">
+                            {{ (s.cancellations || []).length }}
+                          </span>
                         </td>
                         <td class="col-actions-apt" (click)="$event.stopPropagation()">
                           <div class="action-btns">
-                            <button class="action-btn" title="Nächsten Termin im Kalender anzeigen" (click)="navigateToSeriesDay(s)">&#128197;</button>
-                            <button class="action-btn" title="Ausfall eintragen" (click)="openCancellationModal(s)">&#10006;</button>
-                            <button class="action-btn" title="Serie löschen" (click)="confirmDeleteSeries(s)">&#128465;</button>
+
+                            <button class="action-btn trash" title="Serie löschen" (click)="$event.stopPropagation(); confirmDeleteSeries(s)">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6z"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            </button>
                           </div>
                         </td>
                       </tr>
-                      @if (expandedSeriesId === s.id && s.cancellations && s.cancellations.length > 0) {
-                        <tr class="cancellation-row">
-                          <td colspan="9">
-                            <div class="cancellation-list">
-                              <strong>Ausfälle:</strong>
-                              @for (c of s.cancellations; track c.date) {
-                                <span class="cancellation-chip">{{ formatDateDE(c.date) }}</span>
-                              }
-                            </div>
-                          </td>
-                        </tr>
-                      }
+
                     }
                   </tbody>
                 </table>
@@ -331,74 +319,19 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
       </div>
     </div>
 
-    <!-- Cancellation Modal -->
+    <!-- Cancellation Modal now implemented in a standalone component -->
     @if (showCancellationModal()) {
-      <div class="modal-overlay" (click)="closeCancellationModal()">
-        <div class="modal modal-cancellations" (click)="$event.stopPropagation()">
-          <div class="modal-header-bar">
-            <h2>Ausfälle verwalten</h2>
-            <button class="btn-close" (click)="closeCancellationModal()">&times;</button>
-          </div>
-          <p class="modal-sub">Serie: {{ cancellationSeries()?.patientName }} – {{ weekdayLabel(cancellationSeries()?.weekday || '') }}</p>
-
-          <!-- Existing cancellations table -->
-          @if (cancellationSeries()?.cancellations && cancellationSeries()!.cancellations!.length > 0) {
-            <div class="cancellations-table-wrapper">
-              <table class="cancellations-table">
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th>Wochentag</th>
-                    <th class="col-actions">Aktion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (c of cancellationSeries()!.cancellations!; track c.id || c.date) {
-                    <tr>
-                      <td>{{ formatDateDE(c.date) }}</td>
-                      <td>{{ getWeekdayName(c.date) }}</td>
-                      <td class="col-actions">
-                        <button class="btn-remove-cancellation" title="Ausfall entfernen (Termin wiederherstellen)" (click)="removeCancellation(cancellationSeries()!.id, c.id!)" [disabled]="deletingCancellation()">
-                          &#128465;
-                        </button>
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-          } @else {
-            <p class="no-cancellations-message">Keine Ausfälle vorhanden.</p>
-          }
-
-          <!-- Add new cancellation -->
-          <div class="add-cancellation-section">
-            <h4>Neuen Ausfall eintragen</h4>
-            <div class="add-cancellation-row">
-              <select [(ngModel)]="newCancellationDate" class="date-select">
-                <option value="">Datum wählen...</option>
-                @for (d of availableCancellationDates(); track d) {
-                  <option [ngValue]="d">{{ formatDateDE(d) }} ({{ getWeekdayName(d) }})</option>
-                }
-              </select>
-              <button class="btn btn-primary" [disabled]="!newCancellationDate" (click)="saveCancellation()">Hinzufügen</button>
-            </div>
-            @if (availableCancellationDates().length === 0) {
-              <p class="no-dates-hint">Keine verfügbaren Termine mehr.</p>
-            }
-          </div>
-
-          <div class="modal-actions-bar">
-            <button class="btn-secondary" (click)="closeCancellationModal()">Schließen</button>
-          </div>
-        </div>
-      </div>
+      <app-series-cancellations
+        [seriesId]="cancellationSeries() ? cancellationSeries()!.id : null"
+        (close)="closeCancellationModal()"
+        (updated)="handleSeriesUpdated($event)">
+      </app-series-cancellations>
     }
 
     <!-- Delete Series Confirmation -->
     @if (showDeleteSeriesModal()) {
-      <div class="modal-overlay" (click)="showDeleteSeriesModal.set(false)">
-        <div class="modal modal-sm" (click)="$event.stopPropagation()">
+      <div style="max-width: 250px;" class="modal-overlay" (click)="showDeleteSeriesModal.set(false)">
+        <div style="min-width: 200px;" class="modal" (click)="$event.stopPropagation()">
           <h2>Serie löschen?</h2>
           <p>Möchten Sie die Serie von "{{ seriesToDelete()?.patientName }}" wirklich löschen?</p>
           <div class="modal-actions-bar">
@@ -410,91 +343,22 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     }
 
     <!-- Series Edit Modal -->
-    @if (showSeriesEditModal() && editingSeries()) {
-      <div class="modal-overlay" (click)="closeSeriesEditModal()">
-        <div class="modal" (click)="$event.stopPropagation()">
-          <div class="modal-header-bar">
-            <h2>Serie bearbeiten</h2>
-            <button class="btn-close" (click)="closeSeriesEditModal()">&times;</button>
-          </div>
-
-          <div class="series-info-banner" style="margin-bottom: 1rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            <span>Änderungen werden auf alle zukünftigen Termine dieser Serie angewendet.</span>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-            <div>
-              <label style="font-weight: 600; color: #6B7280; font-size: 0.8rem;">Patient</label>
-              <p style="margin: 0.25rem 0 0 0; color: #374151; font-weight: 500;">{{ editingSeries()?.patientName }}</p>
-            </div>
-            <div>
-              <label style="font-weight: 600; color: #6B7280; font-size: 0.8rem;">Therapeut</label>
-              <p style="margin: 0.25rem 0 0 0; color: #374151;">{{ editingSeries()?.therapistName }}</p>
-            </div>
-          </div>
-
-          <form (ngSubmit)="saveSeriesEdit()">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div class="form-group">
-                <label>Beginn</label>
-                <input type="time" [(ngModel)]="seriesEditForm.startTime" name="startTime" />
-              </div>
-              <div class="form-group">
-                <label>Ende</label>
-                <input type="time" [(ngModel)]="seriesEditForm.endTime" name="endTime" />
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div class="form-group">
-                <label>Enddatum</label>
-                <input type="date" [(ngModel)]="seriesEditForm.endDate" name="endDate" />
-              </div>
-              <div class="form-group">
-                <label>Intervall</label>
-                <select [(ngModel)]="seriesEditForm.weeklyFrequency" name="weeklyFrequency">
-                  <option [ngValue]="1">Jede Woche</option>
-                  <option [ngValue]="2">Alle 2 Wochen</option>
-                  <option [ngValue]="3">Alle 3 Wochen</option>
-                  <option [ngValue]="4">Alle 4 Wochen</option>
-                </select>
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 1.5rem; margin-bottom: 1rem;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                <input type="checkbox" [(ngModel)]="seriesEditForm.isHotair" name="isHotair" />
-                Heißluft
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                <input type="checkbox" [(ngModel)]="seriesEditForm.isUltrasonic" name="isUltrasonic" />
-                Ultraschall
-              </label>
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                <input type="checkbox" [(ngModel)]="seriesEditForm.isElectric" name="isElectric" />
-                Elektrotherapie
-              </label>
-            </div>
-
-            <div class="form-group" style="margin-bottom: 1rem;">
-              <label>Kommentar</label>
-              <textarea [(ngModel)]="seriesEditForm.comment" name="comment" rows="2" placeholder="Optionale Bemerkung..."></textarea>
-            </div>
-
-            <div class="modal-actions-bar">
-              <button type="button" class="btn-secondary" (click)="closeSeriesEditModal()">Abbrechen</button>
-              <button type="submit" class="btn btn-primary" [disabled]="savingSeriesEdit()">
-                {{ savingSeriesEdit() ? 'Speichern...' : 'Speichern' }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+    @if (showSeriesEditModal() && (editingSeries() || standaloneSeriesAppointmentId())) {
+      @if (standaloneSeriesAppointmentId()) {
+        <app-appointment-modal
+          [appointmentId]="standaloneSeriesAppointmentId()"
+          [initialEditMode]="'series'"
+          (close)="closeStandaloneSeriesModal()"
+          (saved)="onStandaloneSeriesSaved($event)">
+        </app-appointment-modal>
+      } @else if (editingSeries()) {
+        <app-appointment-modal
+          [seriesId]="editingSeries()!.id"
+          [initialEditMode]="'series'"
+          (close)="closeSeriesEditModal()"
+          (saved)="onStandaloneSeriesSaved($event)">
+        </app-appointment-modal>
+      }
     }
 
     <!-- Patient Detail Modal -->
@@ -567,16 +431,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 
     /* Main Table */
     .table-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 1rem; gap: 0.75rem; }
-    .search-bar { position: relative; }
-    .apt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #F3F4F6; }
-    .filter-tabs { display: flex; gap: 0.25rem; }
-    .filter-tabs button { background: none; border: 1px solid #E5E7EB; padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: #6B7280; }
-    .filter-tabs button.active { background: #E6F0FF; color: #2563EB; border-color: #3B82F6; }
-    .filter-tabs.type-filter { margin-left: auto; }
-    .search-input { width: 100%; padding: 0.6rem 2rem 0.6rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 0.875rem; outline: none; background: white; box-sizing: border-box; }
-    .search-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-    .search-clear { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 1.25rem; cursor: pointer; color: #9CA3AF; }
-    .search-clear:hover { color: #374151; }
+    /* toolbar layout is provided globally via .table-controls in src/styles/global.scss */
     .sort-bar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
     .sort-label { font-size: 0.75rem; color: #6B7280; }
     .sort-btn { padding: 0.25rem 0.5rem; border: 1px solid #E5E7EB; background: white; border-radius: 4px; font-size: 0.7rem; cursor: pointer; color: #6B7280; transition: all 0.15s; }
@@ -600,7 +455,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     .apt-row.completed td { color: #6B7280; }
     .apt-row.clickable-row { cursor: pointer; }
     .apt-row.clickable-row:hover { background: #EFF6FF; }
-    .col-date { white-space: nowrap; }
+    .col-date, .col-start-date, .col-end-date { white-space: nowrap; }
     .col-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .col-patient { min-width: 100px; }
     .col-patient a, .link-blue { color: #3B82F6; text-decoration: none; font-weight: 500; cursor: pointer; }
@@ -636,14 +491,18 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     .action-btn:hover { background: #EFF6FF; border-color: #3B82F6; }
 
     /* Cancellation display */
-    .cancel-count { color: #DC2626; font-size: 0.75rem; font-weight: 500; cursor: pointer; text-decoration: underline; }
-    .cancel-count:hover { color: #991B1B; }
     .no-cancellations { color: #9CA3AF; }
     .cancellation-row td { background: #FEF2F2; padding: 0.5rem 0.6rem; }
     .cancellation-list { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; font-size: 0.75rem; }
     .cancellation-chip { background: #FEE2E2; color: #991B1B; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 500; }
     .existing-cancellations { margin-top: 1rem; }
     .existing-cancellations label { font-size: 0.8rem; color: #6B7280; margin-bottom: 0.35rem; display: block; }
+
+    /* clickable cancellation count */
+    .cancel-count { cursor: pointer; padding: 0.15rem 0.5rem; border-radius: 6px; display: inline-block; min-width: 1.6rem; text-align: center; font-weight: 600; color: #111827; transition: background-color 0.12s; }
+    .cancel-count:hover { background: #F3F4F6; }
+    .cancel-count.zero { color: #9CA3AF; font-weight: 500; }
+
     .cancellation-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem; }
 
     /* Modal */
@@ -733,10 +592,10 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
 
   // Sorting (single appointments) - server-side
   sortField: 'date' | 'patient' | 'therapist' | 'time' = 'date';
-  sortDir: 'asc' | 'desc' = 'desc';
+  sortDir: 'asc' | 'desc' = 'asc';
 
   // Sorting (series) - client-side
-  seriesSortField: 'patient' | 'therapist' | 'weekday' | 'time' | 'startDate' = 'startDate';
+  seriesSortField: 'patient' | 'therapist' | 'weekday' | 'time' | 'startDate' | 'endDate' = 'startDate';
   seriesSortDir: 'asc' | 'desc' = 'desc';
 
   // Pagination - single (server-side)
@@ -754,9 +613,9 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   filterStatuses = new Set<string>();
   filterSeriesStatuses = new Set<string>();
   filterBWO = false;
-  // time / type filters (like in Patient-Detail)
-  appointmentFilter = signal<'upcoming' | 'past' | 'all'>('all');
-  appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
+  // time filter (like in Patient-Detail)
+  appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
+  // appointmentTypeFilter removed — 'Einzeltermine' shows all appointments by default.
 
   // Cancellation modal
   showCancellationModal = signal(false);
@@ -790,12 +649,13 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   };
   savingSeriesEdit = signal(false);
 
+  // Standalone modal support for editing series via the appointment modal
+  standaloneSeriesAppointmentId = signal<number | null>(null);
   // Patient detail modal
   showPatientDetail = signal(false);
   selectedPatient = signal<any>(null);
 
-  // Expanded series row for cancellations
-  expandedSeriesId: number | null = null;
+
 
   allStatuses = [
     { value: 'SCHEDULED', label: 'Geplant' },
@@ -867,6 +727,8 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   setViewMode(mode: 'single' | 'series'): void {
     this.viewMode.set(mode);
     this.resetFilters();
+    // make sure single view defaults to date ascending (oldest first)
+    if (mode === 'single') { this.sortField = 'date'; this.sortDir = 'asc'; }
     if (mode === 'series' && this.allSeries().length === 0) {
       this.loadSeries();
     }
@@ -900,15 +762,13 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       search: this.searchTerm || undefined
     };
 
-    // Prefer server-side extended API when time/type filters are active; otherwise keep using cacheService
+    // Prefer server-side extended API when time filters are active; otherwise keep using cacheService
     const timeFilter = this.appointmentFilter() === 'all' ? undefined : (this.appointmentFilter() as 'upcoming' | 'past');
-    const appointmentType = this.appointmentTypeFilter() === 'all' ? undefined : (this.appointmentTypeFilter() as 'series' | 'single');
 
-    if (timeFilter || appointmentType) {
+    if (timeFilter) {
       const extParams: AppointmentExtendedPageParams = {
         ...baseParams,
-        timeFilter,
-        appointmentType
+        timeFilter
       };
 
       this.appointmentService.getPaginatedExtended(extParams).pipe(
@@ -965,7 +825,8 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   loadSeries(): void {
     this.seriesService.getAll().subscribe({
       next: (series) => {
-        this.allSeries.set(series || []);
+        const normalized = (series || []).map(s => ({ ...s, weekday: this.normalizeWeekday(s.weekday) }));
+        this.allSeries.set(normalized);
         this.applyFilters();
       },
       error: () => {
@@ -1031,12 +892,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       result = result.filter(a => a.isBWO);
     }
 
-    // appointment type filter (client-side fallback)
-    if (this.appointmentTypeFilter() === 'series') {
-      result = result.filter(a => a.createdBySeriesAppointment || !!a.appointmentSeriesId);
-    } else if (this.appointmentTypeFilter() === 'single') {
-      result = result.filter(a => !(a.createdBySeriesAppointment || !!a.appointmentSeriesId));
-    }
+    // appointmentTypeFilter removed — show all appointments (including series-generated) in the main list by default.
 
     // time filter (client-side fallback)
     if (this.appointmentFilter() === 'past') {
@@ -1058,7 +914,14 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       result = result.filter(s =>
         s.patientName?.toLowerCase().includes(term) ||
         s.therapistName?.toLowerCase().includes(term) ||
-        (s.comment && s.comment.toLowerCase().includes(term))
+        (s.comment && s.comment.toLowerCase().includes(term)) ||
+        (s.startDate && s.startDate.split('T')[0].includes(term)) ||
+        (s.endDate && s.endDate.split('T')[0].includes(term)) ||
+        (s.startTime && s.startTime.toLowerCase().includes(term)) ||
+        (s.endTime && s.endTime.toLowerCase().includes(term)) ||
+        (s.weekday && this.weekdayLabel(s.weekday).toLowerCase().includes(term)) ||
+        (s.status && s.status.toLowerCase().includes(term)) ||
+        (s.weeklyFrequency != null && s.weeklyFrequency.toString().includes(term))
       );
     }
 
@@ -1092,6 +955,9 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
           break;
         case 'startDate':
           cmp = (a.startDate || '').localeCompare(b.startDate || '');
+          break;
+        case 'endDate':
+          cmp = (a.endDate || '').localeCompare(b.endDate || '');
           break;
       }
       return this.seriesSortDir === 'asc' ? cmp : -cmp;
@@ -1139,11 +1005,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   /**
    * Appointment type filter (serie / einzel / alle)
    */
-  setAppointmentTypeFilter(filter: 'all' | 'series' | 'single'): void {
-    this.appointmentTypeFilter.set(filter);
-    this.requestedPage.set(0);
-    this.applyFilters();
-  }
+
 
   // ================== Sort ==================
 
@@ -1157,12 +1019,12 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     this.applyFilters();
   }
 
-  toggleSeriesSort(field: 'patient' | 'therapist' | 'weekday' | 'time' | 'startDate'): void {
+  toggleSeriesSort(field: 'patient' | 'therapist' | 'weekday' | 'time' | 'startDate' | 'endDate'): void {
     if (this.seriesSortField === field) {
       this.seriesSortDir = this.seriesSortDir === 'asc' ? 'desc' : 'asc';
     } else {
       this.seriesSortField = field;
-      this.seriesSortDir = field === 'startDate' ? 'desc' : 'asc';
+      this.seriesSortDir = (field === 'startDate' || field === 'endDate') ? 'desc' : 'asc';
     }
     this.applyFilters();
   }
@@ -1221,24 +1083,45 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
 
   // ================== Series Navigation ==================
 
-  // Navigate to the next occurrence of a series in the calendar
+  // Navigate to the next occurrence of a series in the calendar (respect series start/end & frequency)
   navigateToSeriesDay(series: AppointmentSeries): void {
-    const weekdayMap: Record<string, number> = {
-      'SUNDAY': 0, 'MONDAY': 1, 'TUESDAY': 2, 'WEDNESDAY': 3,
-      'THURSDAY': 4, 'FRIDAY': 5, 'SATURDAY': 6
-    };
+    const nextDateStr = this.getNextSeriesOccurrence(series);
+    if (!nextDateStr) {
+      this.toastService.show('Keine zukünftigen Termine in dieser Serie', 'info');
+      return;
+    }
+    this.router.navigate(['/dashboard/calendar'], { queryParams: { date: nextDateStr } });
+  }
 
-    const targetDay = weekdayMap[series.weekday];
-    const today = new Date();
-    const todayDay = today.getDay();
-    let daysUntilNext = (targetDay - todayDay + 7) % 7;
-    if (daysUntilNext === 0) daysUntilNext = 0; // Today is that weekday
+  // Navigate to the next occurrence of a series and open the single appointment in the calendar (if it exists)
+  navigateToNextOccurrence(series: AppointmentSeries): void {
+    const nextDateStr = this.getNextSeriesOccurrence(series);
+    if (!nextDateStr) {
+      this.toastService.show('Keine zukünftigen Termine in dieser Serie', 'info');
+      return;
+    }
 
-    const nextDate = new Date(today);
-    nextDate.setDate(today.getDate() + daysUntilNext);
+    // fetch appointments for that date and try to find the appointment belonging to this series
+    this.appointmentService.getByDate(nextDateStr).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (apts) => {
+        const match = (apts || []).find(a => a.appointmentSeriesId === series.id || a.createdBySeriesAppointment);
+        if (match) {
+          // open single appointment in calendar edit mode
+          this.navigateToEdit(match);
+        } else {
+          // fallback: just navigate to the day
+          this.navigateToSeriesDay(series);
+        }
+      },
+      error: () => {
+        this.toastService.show('Fehler beim Laden der Termine für dieses Datum', 'error');
+      }
+    });
+  }
 
-    const fmt = (d: Date) => d.toISOString().split('T')[0];
-    this.router.navigate(['/dashboard/calendar'], { queryParams: { date: fmt(nextDate) } });
+  // Public helper for template: returns next occurrence date (ISO yyyy-mm-dd) or null
+  nextSeriesOccurrenceDate(series: AppointmentSeries): string | null {
+    return this.getNextSeriesOccurrence(series);
   }
 
   // Navigate to the next occurrence of a series and open it in edit (series) mode
@@ -1350,19 +1233,32 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
 
   // ================== Series Actions ==================
 
-  toggleCancellationView(series: AppointmentSeries): void {
-    this.expandedSeriesId = this.expandedSeriesId === series.id ? null : series.id;
-  }
+
 
   openCancellationModal(series: AppointmentSeries): void {
+    // guard: if modal already open for the same series, do nothing (prevents accidental re-open/re-render loops)
+    if (this.showCancellationModal() && this.cancellationSeries() && this.cancellationSeries()!.id === series.id) {
+      return;
+    }
+
     this.cancellationSeries.set(series);
     this.newCancellationDate = '';
     this.showCancellationModal.set(true);
+    // lock background scroll
+    try { document.body.classList.add('modal-open'); } catch (e) { /* noop in SSR */ }
   }
 
   closeCancellationModal(): void {
     this.showCancellationModal.set(false);
     this.cancellationSeries.set(null);
+    // unlock background scroll
+    try { document.body.classList.remove('modal-open'); } catch (e) { /* noop in SSR */ }
+  }
+
+  handleSeriesUpdated(updated: AppointmentSeries): void {
+    // update cached list and refresh filters/view
+    this.allSeries.update(list => list.map(s => s.id === updated.id ? updated : s));
+    this.applyFilters();
   }
 
   saveCancellation(): void {
@@ -1414,30 +1310,90 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     return weekdays[date.getDay()];
   }
 
+  // Normalize weekday values coming from the server (accept german or english strings)
+  private normalizeWeekday(value?: string | null): string {
+    if (!value) return '';
+    const map: Record<string,string> = {
+      'montag':'MONDAY','dienstag':'TUESDAY','mittwoch':'WEDNESDAY','donnerstag':'THURSDAY','freitag':'FRIDAY','samstag':'SATURDAY','sonntag':'SUNDAY',
+      'monday':'MONDAY','tuesday':'TUESDAY','wednesday':'WEDNESDAY','thursday':'THURSDAY','friday':'FRIDAY','saturday':'SATURDAY','sunday':'SUNDAY'
+    };
+    const key = value.trim();
+    const lower = key.toLowerCase();
+    const candidate = map[key] || map[lower] || key.toUpperCase();
+    const valid = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+    return valid.includes(candidate) ? candidate : '';
+  }
+
   confirmDeleteSeries(series: AppointmentSeries): void {
     this.seriesToDelete.set(series);
     this.showDeleteSeriesModal.set(true);
   }
 
   openSeriesEditModal(series: AppointmentSeries): void {
-    this.editingSeries.set(series);
-    // Populate form with current values
-    this.seriesEditForm = {
-      startTime: series.startTime ? series.startTime.substring(0, 5) : '',
-      endTime: series.endTime ? series.endTime.substring(0, 5) : '',
-      endDate: series.endDate ? series.endDate.split('T')[0] : '',
-      weeklyFrequency: series.weeklyFrequency || 1,
-      comment: series.comment || '',
-      isHotair: series.isHotair || false,
-      isUltrasonic: series.isUltrasonic || false,
-      isElectric: series.isElectric || false
-    };
-    this.showSeriesEditModal.set(true);
+    console.log('[Overview] openSeriesEditModal called for seriesId=', series.id);
+    // Try to find a representative appointment that belongs to this series so we can open
+    // the standalone appointment modal preloaded and in series-edit mode.
+    this.appointmentService.getByDateRange(series.startDate, series.endDate).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (apts) => {
+        const match = (apts || []).find(a => a.appointmentSeriesId === series.id || a.createdBySeriesAppointment);
+        console.log('[Overview] openSeriesEditModal - representative appointment found:', !!match, match ? match.id : null);
+        if (match) {
+          // Prefer opening the series MASTER in the standalone appointment modal by passing the seriesId
+          if (match.appointmentSeriesId) {
+            console.log('[Overview] openSeriesEditModal - opening standalone modal with seriesId=', match.appointmentSeriesId);
+            // set editingSeries so the template will render <app-appointment-modal [seriesId]="...">
+            this.editingSeries.set(series);
+            this.showSeriesEditModal.set(true);
+            return;
+          }
+
+          // Fallback: if the appointment is not linked to a series for some reason, open by appointmentId
+          this.standaloneSeriesAppointmentId.set(match.id);
+          this.showSeriesEditModal.set(true);
+          console.log('[Overview] openSeriesEditModal - opening standalone modal appointmentId=', match.id);
+          return;
+        }
+
+        console.log('[Overview] openSeriesEditModal - no representative appointment, opening inline editor for seriesId=', series.id);
+        // Fallback: open inline series editor if no appointment record is available
+        this.editingSeries.set(series);
+        this.seriesEditForm = {
+          startTime: series.startTime ? series.startTime.substring(0, 5) : '',
+          endTime: series.endTime ? series.endTime.substring(0, 5) : '',
+          endDate: series.endDate ? series.endDate.split('T')[0] : '',
+          weeklyFrequency: series.weeklyFrequency || 1,
+          comment: series.comment || '',
+          isHotair: series.isHotair || false,
+          isUltrasonic: series.isUltrasonic || false,
+          isElectric: series.isElectric || false
+        };
+        this.showSeriesEditModal.set(true);
+      },
+      error: (err) => {
+        console.error('[Overview] openSeriesEditModal - error fetching appointments for seriesId=', series.id, err);
+        // fallback behaviour on error
+        this.editingSeries.set(series);
+        this.showSeriesEditModal.set(true);
+      }
+    });
   }
 
   closeSeriesEditModal(): void {
     this.showSeriesEditModal.set(false);
     this.editingSeries.set(null);
+    this.standaloneSeriesAppointmentId.set(null);
+  }
+
+  closeStandaloneSeriesModal(): void {
+    this.standaloneSeriesAppointmentId.set(null);
+    this.showSeriesEditModal.set(false);
+  }
+
+  onStandaloneSeriesSaved(_result: any): void {
+    // refresh series list and UI after the standalone modal saved changes
+    this.standaloneSeriesAppointmentId.set(null);
+    this.showSeriesEditModal.set(false);
+    this.loadSeries();
   }
 
   saveSeriesEdit(): void {
@@ -1537,6 +1493,8 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     this.filterStatuses.clear();
     this.filterSeriesStatuses.clear();
     this.filterBWO = false;
+    // Restore default appointment filters
+    this.appointmentFilter.set('upcoming');
     this.applyFilters();
   }
 

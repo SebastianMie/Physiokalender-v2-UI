@@ -103,10 +103,14 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                 </label>
 
                 <div class="form-actions">
-                  <button class="btn-cancel" (click)="cancelEdit()">Abbrechen</button>
-                  <button class="btn-save" (click)="savePatient()" [disabled]="saving()">
-                    {{ saving() ? 'Speichern...' : 'Speichern' }}
-                  </button>
+                  <button class="btn-delete-subtle" (click)="confirmDeletePatient()" title="Patient löschen">Patient löschen</button>
+
+                  <div style="margin-left:auto; display:flex; gap:0.5rem;">
+                    <button class="btn-cancel" (click)="cancelEdit()">Abbrechen</button>
+                    <button class="btn-save" (click)="savePatient()" [disabled]="saving()">
+                      {{ saving() ? 'Speichern...' : 'Speichern' }}
+                    </button>
+                  </div>
                 </div>
               } @else {
                 <!-- Read-Only Mode -->
@@ -166,10 +170,6 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                 </div>
 
                 <div class="form-divider"></div>
-
-                <div class="delete-section">
-                  <button class="btn-delete-subtle" (click)="confirmDeletePatient()">🗑️ Patient löschen</button>
-                </div>
               }
             </div>
           </div>
@@ -184,24 +184,21 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
               </button>
             </div>
 
-            <!-- Filter Row -->
-            <div class="apt-filters">
-              <div class="filter-tabs">
-                <button [class.active]="appointmentFilter() === 'upcoming'" (click)="setAppointmentFilter('upcoming')">Kommende</button>
-                <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
-                <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
+                    <div class="table-controls">
+              <div class="apt-filters">
+                <div class="filter-tabs">
+                  <button [class.active]="appointmentFilter() === 'upcoming'" (click)="setAppointmentFilter('upcoming')">Kommende</button>
+                  <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
+                  <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
+                </div>
+                <div class="filter-tabs type-filter">
+                  <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
+                  <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
+                  <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
+                </div>
               </div>
-              <div class="filter-tabs type-filter">
-                <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
-                <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
-                <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
-              </div>
-              <div class="status-filter">
-                @for (s of allStatuses; track s.value) {
-                  <button class="status-chip" [class.active]="filterStatus === s.value"
-                    (click)="toggleStatusFilter(s.value)">{{ s.label }}</button>
-                }
-              </div>
+
+              <input type="text" [(ngModel)]="appointmentSearchTerm" (input)="onAppointmentSearchInput($event)" placeholder="Suche (Therapeut, Kommentar, Datum)..." class="search-input" />
             </div>
 
             @if (loadingAppointments()) {
@@ -312,7 +309,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
       <!-- Delete Confirmation Modal -->
       @if (showDeleteModal) {
         <div class="modal-overlay" (click)="showDeleteModal = false">
-          <div class="modal" (click)="$event.stopPropagation()">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
             <h2>Patient löschen?</h2>
             <p class="modal-warning">
               Möchten Sie <strong>{{ patient()?.fullName }}</strong> wirklich unwiderruflich löschen?
@@ -374,14 +371,8 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .appointments-card { display: flex; flex-direction: column; overflow: hidden; }
     .card-header { display: flex; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
     .result-count { font-size: 0.7rem; color: #6B7280; background: #E5E7EB; padding: 0.1rem 0.4rem; border-radius: 10px; }
-    .apt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
-    .filter-tabs { display: flex; gap: 0; }
-    .filter-tabs button { padding: 0.3rem 0.6rem; border: 1px solid #E5E7EB; background: white; color: #6B7280; font-size: 0.7rem; cursor: pointer; }
-    .filter-tabs button:first-child { border-radius: 4px 0 0 4px; }
-    .filter-tabs button:last-child { border-radius: 0 4px 4px 0; }
-    .filter-tabs button.active { background: #3B82F6; border-color: #3B82F6; color: white; }
-    .filter-tabs.type-filter { margin-left: 0.5rem; }
-    .filter-tabs.type-filter button.active { background: #8B5CF6; border-color: #8B5CF6; }
+    /* toolbar layout and search styling moved to global styles (.table-controls) */
+    /* filter-tabs styling moved to global.scss (.filter-tabs) */
     .status-filter { display: flex; gap: 0.25rem; margin-left: auto; flex-wrap: wrap; }
     .status-chip { padding: 0.15rem 0.4rem; border: 1px solid #E5E7EB; background: white; border-radius: 4px; font-size: 0.6rem; cursor: pointer; color: #6B7280; }
     .status-chip.active { background: #EFF6FF; border-color: #3B82F6; color: #2563EB; }
@@ -445,6 +436,8 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
     .modal { background: white; border-radius: 12px; padding: 1.5rem; width: 100%; max-width: 420px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
     .modal.modal-wide { max-width: 560px; }
+    /* small centered confirm dialogs */
+    .modal-sm { max-width: 360px; padding: 1rem; }
     .modal h2 { margin: 0 0 1rem 0; color: #111827; font-size: 1.15rem; }
     .modal-desc { color: #6B7280; margin: 0 0 1rem 0; font-size: 0.8rem; }
     .modal-warning { color: #374151; margin: 0 0 0.5rem 0; font-size: 0.875rem; }
@@ -454,8 +447,11 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .btn-danger:hover { background: #B91C1C; }
 
     /* Print Button & Modal */
-    .btn-print { margin-left: auto; padding: 0.35rem 0.75rem; background: #F97316; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 500; }
+    .header-actions-inline { margin-left: auto; display: flex; gap: 0.25rem; align-items: center; }
+    .btn-print { padding: 0.35rem 0.75rem; background: #F97316; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-weight: 500; }
     .btn-print:hover { background: #EA580C; }
+    .btn-delete-inline { border: none; background: transparent; color: #9CA3AF; padding: 0.35rem 0.45rem; font-size: 0.95rem; border-radius: 6px; cursor: pointer; }
+    .btn-delete-inline:hover { color: #DC2626; background: rgba(220,38,38,0.06); }
     .print-filter-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .btn-link { background: none; border: none; color: #3B82F6; cursor: pointer; font-size: 0.75rem; padding: 0; }
     .btn-link:hover { text-decoration: underline; }
@@ -496,6 +492,10 @@ export class PatientDetailComponent implements OnInit {
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   filterStatus = '';
 
+  // Local search for patient appointments (shown above table)
+  appointmentSearchTerm = '';
+
+
   editForm = {
     firstName: '',
     lastName: '',
@@ -522,7 +522,7 @@ export class PatientDetailComponent implements OnInit {
 
   // Appointment filtering + client-side sorting for patient detail table
   appointmentSortField = signal<'date'|'time'|'therapist'|'type'|'status'>('date');
-  appointmentSortDir = signal<'asc'|'desc'>('desc');
+  appointmentSortDir = signal<'asc'|'desc'>('asc');
 
   filteredAppointments = computed(() => {
     let apts = this.appointments();
@@ -551,6 +551,16 @@ export class PatientDetailComponent implements OnInit {
 
     if (this.filterStatus) {
       apts = apts.filter(a => a.status === this.filterStatus);
+    }
+
+    // local search (therapist name, comment, or date)
+    if (this.appointmentSearchTerm && this.appointmentSearchTerm.trim()) {
+      const t = this.appointmentSearchTerm.trim().toLowerCase();
+      apts = apts.filter(a =>
+        (a.therapistName || '').toLowerCase().includes(t) ||
+        (a.comment || '').toLowerCase().includes(t) ||
+        (a.date || '').toLowerCase().includes(t)
+      );
     }
 
     // client-side sorting
@@ -699,7 +709,7 @@ export class PatientDetailComponent implements OnInit {
   loadAppointments(patientId: number): void {
     this.appointmentService.getByPatient(patientId).subscribe({
       next: (appointments) => {
-        appointments.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
+        appointments.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
         this.appointments.set(appointments);
         this.loadingAppointments.set(false);
       },
@@ -721,13 +731,17 @@ export class PatientDetailComponent implements OnInit {
     this.filterStatus = this.filterStatus === status ? '' : status;
   }
 
+  onAppointmentSearchInput(event: Event): void {
+    this.appointmentSearchTerm = (event.target as HTMLInputElement).value;
+  }
+
   // Sorting helpers for appointments table
   sortAppointments(field: 'date'|'time'|'therapist'|'type'|'status') {
     if (this.appointmentSortField() === field) {
       this.appointmentSortDir.set(this.appointmentSortDir() === 'asc' ? 'desc' : 'asc');
     } else {
       this.appointmentSortField.set(field);
-      this.appointmentSortDir.set(field === 'date' ? 'desc' : 'asc');
+      this.appointmentSortDir.set(field === 'date' ? 'asc' : 'asc');
     }
   }
 

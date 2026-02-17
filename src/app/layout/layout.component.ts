@@ -587,8 +587,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
                   arrays.forEach((arr: any[]) => (arr || []).forEach((a: any) => {
                     const apptDate = (a.date || '').split('T')[0];
                     const isFuture = apptDate >= today;
-                    const isSingle = !(a.createdBySeriesAppointment || a.appointmentSeriesId);
-                    if (isFuture && isSingle) {
+                    // Include FUTURE appointments for matched patients — include both single and series
+                    if (isFuture) {
                       extraPatientAppointments.push({ type: 'appointment', id: a.id, date: a.date, patientName: a.patientName, appointment: a });
                     }
                   }));

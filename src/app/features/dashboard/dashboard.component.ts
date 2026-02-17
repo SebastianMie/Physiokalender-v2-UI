@@ -5,6 +5,7 @@ import { AuthService, User } from '../../core/auth/auth.service';
 import { DailyListComponent } from '../calendar/daily-list.component';
 import { AppointmentFinderComponent } from '../appointments/appointment-finder.component';
 import { AppointmentFinderWizardComponent } from '../appointments/appointment-finder-wizard.component';
+import { AppointmentModalComponent } from '../appointments/appointment-modal.standalone.component';
 import { AppointmentService } from '../../data-access/api/appointment.service';
 import { PatientService } from '../../data-access/api/patient.service';
 import { TherapistService } from '../../data-access/api/therapist.service';
@@ -14,7 +15,7 @@ import { UserService } from '../../data-access/api/user.service';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, DailyListComponent, AppointmentFinderComponent, AppointmentFinderWizardComponent],
+  imports: [CommonModule, RouterLink, DailyListComponent, AppointmentFinderComponent, AppointmentFinderWizardComponent, AppointmentModalComponent],
   template: `
     <div class="dashboard">
       <div class="welcome-banner">
@@ -74,6 +75,11 @@ import { UserService } from '../../data-access/api/user.service';
               </div>
             </div>
           </div>
+        }
+
+        <!-- Appointment Modal (standalone component) -->
+        @if (showAppointmentModal()) {
+          <app-appointment-modal [presetPatientId]="presetPatientId()" [presetTherapistId]="presetTherapistId()" (close)="closeAppointmentModal()" (saved)="closeAppointmentModal(); loadCounts()"></app-appointment-modal>
         }
       </div>
     </div>
@@ -223,6 +229,7 @@ export class DashboardComponent implements OnInit {
   currentUser = signal<User | null>(null);
   showFinder = signal(false);
   showFinderModal = signal(false);
+  showAppointmentModal = signal(false);
 
   appointmentsCount = signal<number>(0);
   patientsCount = signal<number>(0);
@@ -295,11 +302,19 @@ export class DashboardComponent implements OnInit {
     this.presetTherapistId.set(null);
   }
 
+  openAppointmentModal(): void {
+    this.showAppointmentModal.set(true);
+  }
+
+  closeAppointmentModal(): void {
+    this.showAppointmentModal.set(false);
+  }
+
   goto(path: string): void {
     this.router.navigate([path]);
   }
 
-  private loadCounts(): void {
+  loadCounts(): void {
     this.patientService.getAll().subscribe({ next: p => this.patientsCount.set(p.length), error: () => this.patientsCount.set(0) });
     this.therapistService.getAll().subscribe({ next: t => this.therapistsCount.set((t || []).filter(x => x.isActive).length), error: () => this.therapistsCount.set(0) });
     this.absenceService.getAll().subscribe({ next: a => this.absencesCount.set(a.length), error: () => this.absencesCount.set(0) });

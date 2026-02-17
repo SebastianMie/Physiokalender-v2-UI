@@ -12,6 +12,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 import { PracticeSettingsService } from '../../core/services/practice-settings.service';
 import { PrintService, PrintableAppointment } from '../../core/services/print.service';
 import { AbsenceService, Absence } from '../../data-access/api/absence.service';
+import { AppointmentModalComponent } from '../appointments/appointment-modal.standalone.component';
 
 interface ApplicableAbsence {
   absence: Absence;
@@ -63,7 +64,7 @@ interface NewPatientForm {
 @Component({
   selector: 'app-daily-list',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule, DragDropModule],
+  imports: [CommonModule, FormsModule, RouterModule, DragDropModule, AppointmentModalComponent],
   template: `
     <div class="calendar-container">
       <!-- Header -->
@@ -122,7 +123,6 @@ interface NewPatientForm {
                 </a>
                 <div class="header-actions">
                   <span class="apt-count">{{ col.appointments.length }}</span>
-                  <button class="btn-add-small" (click)="openCreateDialogForTherapist(col.therapist)" title="Termin hinzufuegen">+</button>
                 </div>
               </div>
               <div
@@ -211,396 +211,28 @@ interface NewPatientForm {
         </div>
       }
 
-      <!-- Create/Edit Appointment Modal -->
+      <!-- Create/Edit Appointment Modal (standalone handles single + series now) -->
       @if (showCreateModal()) {
-        <div class="modal-overlay" (click)="closeCreateModal()">
-          <div class="modal modal-lg" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>{{ editingAppointment() ? 'Termin bearbeiten' : (newAppointment.isSeries ? 'Neuen Serientermin anlegen' : 'Neuen Termin anlegen') }}</h2>
-              @if (editingAppointment()?.appointmentSeriesId) {
-                <div class="edit-mode-header">
-                  <span class="edit-mode-label">Nur diesen Termin bearbeiten?</span>
-                  <div class="edit-mode-btns">
-                    <button type="button" class="edit-mode-btn" [class.active]="editMode() === 'single'" (click)="setEditModeSingle()">
-                      Ja
-                    </button>
-                    <button type="button" class="edit-mode-btn" [class.active]="editMode() === 'series'" (click)="setEditModeSeries()">
-                      Serie
-                    </button>
-                  </div>
-                </div>
-              }
-              <button class="btn-close" (click)="closeCreateModal()">&times;</button>
-            </div>
-            <form (ngSubmit)="onSaveClick()">
-              <!-- Series info banner when editing entire series -->
-              @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
-                <div class="series-info-banner">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                  </svg>
-                  <span>Änderungen werden auf alle zukünftigen Termine dieser Serie angewendet.</span>
-                </div>
-              }
-
-              <!-- Termin-Typ Toggle (nur im Erstellen-Modus) -->
-              @if (!editingAppointment()) {
-                <div class="type-toggle-row">
-                  <button type="button" class="type-btn" [class.active]="!newAppointment.isSeries" (click)="newAppointment.isSeries = false">
-                    Einzeltermin
-                  </button>
-                  <button type="button" class="type-btn" [class.active]="newAppointment.isSeries" (click)="newAppointment.isSeries = true">
-                    Serientermin
-                  </button>
-                </div>
-              }
-
-              <div class="form-grid">
-                <!-- Therapeut -->
-                <div class="form-group">
-                  <label>Therapeut *</label>
-                  <select [(ngModel)]="newAppointment.therapistId" name="therapistId" required>
-                    <option [ngValue]="null" disabled>Therapeut w&auml;hlen...</option>
-                    @for (t of therapists(); track t.id) {
-                      <option [ngValue]="t.id">{{ t.fullName }}</option>
-                    }
-                  </select>
-                </div>
-
-                <!-- Patient -->
-                <div class="form-group">
-                  <label>Patient *</label>
-                  <div class="patient-select-row">
-                    <div class="patient-search-wrapper">
-                      <input
-                        type="text"
-                        [(ngModel)]="patientSearchTerm"
-                        name="patientSearch"
-                        placeholder="Patient suchen..."
-                        (input)="filterPatients()"
-                        (focus)="onPatientFieldFocus()"
-                        [class.patient-selected]="!!selectedPatient()"
-                        [readonly]="!!selectedPatient()"
-                        autocomplete="off" />
-                      @if (selectedPatient()) {
-                        <button type="button" class="input-clear-btn" (click)="clearPatient()">&times;</button>
-                      }
-                      @if (showPatientDropdown() && filteredPatients().length > 0 && !selectedPatient()) {
-                        <div class="dropdown-list">
-                          @for (p of filteredPatients(); track p.id) {
-                            <div class="dropdown-item" (click)="selectPatient(p)">
-                              <strong>{{ p.fullName }}</strong>
-                              @if (p.telefon) { <span class="patient-info"> &ndash; {{ p.telefon }}</span> }
-                              @if (p.isBWO) { <span class="badge-bwo">BWO</span> }
-                            </div>
-                          }
-                        </div>
-                      }
-                      @if (showPatientDropdown() && patientSearchTerm.length > 1 && filteredPatients().length === 0 && !selectedPatient()) {
-                        <div class="dropdown-list">
-                          <div class="dropdown-item no-results">Kein Patient gefunden</div>
-                        </div>
-                      }
-                    </div>
-                    <button type="button" class="btn-new-patient" (click)="openNewPatientDialog()">+</button>
-                  </div>
-                </div>
-
-                <!-- Datum (Startdatum bei Serie) — zwei gleiche Spalten (Datum | Hinweis) -->
-                <div class="form-group">
-                  <label>{{ newAppointment.isSeries ? 'Startdatum *' : 'Datum *' }}</label>
-                  <input type="date"
-                         [(ngModel)]="newAppointment.date"
-                         name="date"
-                         required
-                         [disabled]="!!((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) && editMode() === 'series')" />
-                </div>
-                <div class="form-group note-column">
-                  @if ((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) && editMode() === 'series') {
-                    <div class="form-note">Datum wird bei Serienänderungen ignoriert</div>
-                  }
-                </div>
-
-                <!-- Enddatum (nur bei Serie) -->
-                @if (newAppointment.isSeries) {
-                  <div class="form-group">
-                    <label>Enddatum *</label>
-                    <input type="date" [(ngModel)]="newAppointment.seriesEndDate" name="seriesEndDate" required [min]="newAppointment.date" />
-                  </div>
-
-                  <!-- Serien-Optionen (jetzt oberhalb der Uhrzeiten) -->
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Intervall *</label>
-                      <select [(ngModel)]="newAppointment.weeklyFrequency" name="weeklyFrequency" required>
-                        <option [ngValue]="1">Jede Woche</option>
-                        <option [ngValue]="2">Alle 2 Wochen</option>
-                        <option [ngValue]="3">Alle 3 Wochen</option>
-                        <option [ngValue]="4">Alle 4 Wochen</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>Wochentag *</label>
-                      <select [(ngModel)]="newAppointment.weekday" name="weekday" required>
-                        <option value="" disabled>W&auml;hlen...</option>
-                        <option value="MONDAY">Montag</option>
-                        <option value="TUESDAY">Dienstag</option>
-                        <option value="WEDNESDAY">Mittwoch</option>
-                        <option value="THURSDAY">Donnerstag</option>
-                        <option value="FRIDAY">Freitag</option>
-                      </select>
-                    </div>
-                  </div>
-                }
-
-                <!-- Series Edit Options (Enddatum und Intervall bei Serie bearbeiten) -->
-                @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Startdatum</label>
-                      <input type="date" [(ngModel)]="seriesEditStartDate" name="seriesEditStartDate" />
-                    </div>
-                    <div class="form-group">
-                      <label>Enddatum</label>
-                      <input type="date" [(ngModel)]="seriesEditEndDate" name="seriesEditEndDate" [min]="seriesEditStartDate || newAppointment.date" />
-                    </div>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Intervall</label>
-                      <select [(ngModel)]="seriesEditWeeklyFrequency" name="seriesEditWeeklyFrequency">
-                        <option [ngValue]="1">Jede Woche</option>
-                        <option [ngValue]="2">Alle 2 Wochen</option>
-                        <option [ngValue]="3">Alle 3 Wochen</option>
-                        <option [ngValue]="4">Alle 4 Wochen</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>Wochentag</label>
-                      <select [(ngModel)]="newAppointment.weekday" name="weekday">
-                        <option value="" disabled>W&auml;hlen...</option>
-                        <option value="MONDAY">Montag</option>
-                        <option value="TUESDAY">Dienstag</option>
-                        <option value="WEDNESDAY">Mittwoch</option>
-                        <option value="THURSDAY">Donnerstag</option>
-                        <option value="FRIDAY">Freitag</option>
-                      </select>
-                    </div>
-                  </div>
-                }
-
-                <!-- Serien-Optionen -->
-                @if (newAppointment.isSeries) {
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Intervall *</label>
-                      <select [(ngModel)]="newAppointment.weeklyFrequency" name="weeklyFrequency" required>
-                        <option [ngValue]="1">Jede Woche</option>
-                        <option [ngValue]="2">Alle 2 Wochen</option>
-                        <option [ngValue]="3">Alle 3 Wochen</option>
-                        <option [ngValue]="4">Alle 4 Wochen</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>Wochentag *</label>
-                      <select [(ngModel)]="newAppointment.weekday" name="weekday" required>
-                        <option value="" disabled>W&auml;hlen...</option>
-                        <option value="MONDAY">Montag</option>
-                        <option value="TUESDAY">Dienstag</option>
-                        <option value="WEDNESDAY">Mittwoch</option>
-                        <option value="THURSDAY">Donnerstag</option>
-                        <option value="FRIDAY">Freitag</option>
-                      </select>
-                    </div>
-                  </div>
-                }
-
-                <!-- Zeiten -->
-                <div class="form-row time-row-centered">
-                  <div class="form-group time-group">
-                    <label>Beginn *</label>
-                    <div class="time-hpicker">
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.startTime) }}</span>
-                      <span class="tp-colon">:</span>
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.startTime) }}</span>
-                      <span class="tp-label">Uhr</span>
-                    </div>
-                  </div>
-                  <div class="form-group time-group">
-                    <label>Ende *</label>
-                    <div class="time-hpicker">
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(newAppointment.endTime) }}</span>
-                      <span class="tp-colon">:</span>
-                      <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(newAppointment.endTime) }}</span>
-                      <span class="tp-label">Uhr</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Optionen -->
-                <div class="form-row checkboxes">
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="newAppointment.isHotair" name="isHotair" />
-                    Hei&szlig;luft
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="newAppointment.isUltrasonic" name="isUltrasonic" />
-                    Ultraschall
-                  </label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="newAppointment.isElectric" name="isElectric" />
-                    Elektrotherapie
-                  </label>
-                </div>
-
-                <!-- Kommentar -->
-                <div class="form-group full-width">
-                  <label>Kommentar</label>
-                  <textarea [(ngModel)]="newAppointment.comment" name="comment" rows="2" placeholder="Optionale Bemerkung..."></textarea>
-                </div>
-              </div>
-
-              <div class="modal-actions">
-                <button type="button" class="btn-secondary" (click)="closeCreateModal()">Abbrechen</button>
-                @if (editingAppointment()) {
-                  <button type="button" class="btn-delete-icon" title="Termin löschen" (click)="confirmDeleteAppointment()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      <line x1="10" y1="11" x2="10" y2="17"></line>
-                      <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                  </button>
-                  <button type="button" class="btn-print-icon" title="Alle Termine des Patienten drucken" (click)="printPatientAppointments()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                      <rect x="6" y="14" width="12" height="8"></rect>
-                    </svg>
-                  </button>
-                }
-                <div class="spacer"></div>
-                <button type="submit" class="btn btn-primary"
-                  [disabled]="!canSaveAppointment() || savingAppointment()">
-                  {{ savingAppointment() ? 'Speichern...' : (editingAppointment() ? 'Speichern' : (newAppointment.isSeries ? 'Serie anlegen' : 'Termin anlegen')) }}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <app-appointment-modal
+          [presetPatientId]="newAppointment.patientId"
+          [presetTherapistId]="newAppointment.therapistId"
+          [presetDate]="newAppointment.date"
+          [presetStartTime]="newAppointment.startTime"
+          [presetEndTime]="newAppointment.endTime"
+          [presetIsSeries]="newAppointment.isSeries"
+          [appointmentId]="editingAppointment()?.id || null"
+          (close)="closeCreateModal()"
+          (saved)="closeCreateModal(); loadAppointments()">
+        </app-appointment-modal>
       }
 
       <!-- Delete Appointment Confirmation Modal -->
-      @if (showDeleteAppointmentModal()) {
-        <div class="modal-overlay" (click)="cancelDeleteAppointment()">
-          <div class="modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>{{ (editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) ? 'Serientermin absagen' : 'Termin löschen' }}</h2>
-              <button class="btn-close" (click)="cancelDeleteAppointment()">&times;</button>
-            </div>
-            @if (editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) {
-              <p>Dieser Termin gehört zu einer Serie. Der Termin wird als <strong>Ausfall</strong> markiert und kann in der Serienübersicht verwaltet werden.</p>
-            } @else {
-              <p>Möchten Sie diesen Termin wirklich löschen?</p>
-            }
-            @if (editingAppointment(); as apt) {
-              <div class="delete-info">
-                <strong>{{ apt.patientName }}</strong><br>
-                {{ apt.date | date:'dd.MM.yyyy' }} · {{ formatTime(apt.startTime) }} - {{ formatTime(apt.endTime) }}
-                @if (apt.createdBySeriesAppointment || apt.appointmentSeriesId) {
-                  <span class="series-badge">Serientermin</span>
-                }
-              </div>
-            }
-            <div class="modal-actions">
-              <button type="button" class="btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
-              <button type="button" class="btn-danger" (click)="deleteAppointment()" [disabled]="deletingAppointment()">
-                {{ deletingAppointment() ? 'Wird verarbeitet...' : ((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) ? 'Als Ausfall markieren' : 'Löschen') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      }
+
 
       <!-- Series Edit Confirmation Modal -->
-      @if (showSeriesEditConfirmModal()) {
-        <div class="modal-overlay" (click)="cancelSeriesEdit()">
-          <div class="modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>Gesamte Serie bearbeiten</h2>
-              <button class="btn-close" (click)="cancelSeriesEdit()">&times;</button>
-            </div>
-            <p>Die Änderungen werden auf <strong>alle zukünftigen Termine</strong> dieser Serie angewendet. Möchten Sie fortfahren?</p>
-            <div class="modal-actions">
-              <button type="button" class="btn-secondary" (click)="cancelSeriesEdit()">Abbrechen</button>
-              <button type="button" class="btn btn-primary" (click)="confirmSeriesEdit()">Ja, Serie aktualisieren</button>
-            </div>
-          </div>
-        </div>
-      }
 
-      <!-- New Patient Modal -->
-      @if (showNewPatientModal()) {
-        <div class="modal-overlay" (click)="closeNewPatientDialog()">
-          <div class="modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h2>Neuen Patienten anlegen</h2>
-              <button class="btn-close" (click)="closeNewPatientDialog()">&times;</button>
-            </div>
-            <form (ngSubmit)="saveNewPatient()">
-              <div class="form-grid">
-                <div class="form-group">
-                  <label>Vorname *</label>
-                  <input type="text" [(ngModel)]="newPatient.firstName" name="pFirstName" required />
-                </div>
-                <div class="form-group">
-                  <label>Nachname *</label>
-                  <input type="text" [(ngModel)]="newPatient.lastName" name="pLastName" required />
-                </div>
-                <div class="form-group">
-                  <label>Telefon</label>
-                  <input type="tel" [(ngModel)]="newPatient.telefon" name="pTelefon" />
-                </div>
-                <div class="form-group">
-                  <label>E-Mail</label>
-                  <input type="email" [(ngModel)]="newPatient.email" name="pEmail" />
-                </div>
-                <div class="form-group">
-                  <label>Stra&szlig;e</label>
-                  <input type="text" [(ngModel)]="newPatient.street" name="pStreet" />
-                </div>
-                <div class="form-group">
-                  <label>Hausnr.</label>
-                  <input type="text" [(ngModel)]="newPatient.houseNumber" name="pHouseNumber" />
-                </div>
-                <div class="form-group">
-                  <label>PLZ</label>
-                  <input type="text" [(ngModel)]="newPatient.postalCode" name="pPostalCode" />
-                </div>
-                <div class="form-group">
-                  <label>Ort</label>
-                  <input type="text" [(ngModel)]="newPatient.city" name="pCity" />
-                </div>
-                <div class="form-group full-width">
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="newPatient.isBWO" name="pBWO" />
-                    BWO (Behindertenwerkstatt Oberberg)
-                  </label>
-                </div>
-              </div>
-              <div class="modal-actions">
-                <button type="button" class="btn-secondary" (click)="closeNewPatientDialog()">Abbrechen</button>
-                <button type="submit" class="btn btn-primary"
-                  [disabled]="!newPatient.firstName || !newPatient.lastName || savingPatient()">
-                  {{ savingPatient() ? 'Speichern...' : 'Patient anlegen' }}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      }
+
+
 
       <!-- Conflict Modal -->
       @if (showConflictModal()) {
@@ -857,12 +489,7 @@ export class DailyListComponent implements OnInit {
 
   // Create appointment state
   showCreateModal = signal(false);
-  showNewPatientModal = signal(false);
   savingAppointment = signal(false);
-  savingPatient = signal(false);
-  showDeleteAppointmentModal = signal(false);
-  deletingAppointment = signal(false);
-  showSeriesEditConfirmModal = signal(false);
   selectedPatient = signal<Patient | null>(null);
   allPatients = signal<Patient[]>([]);
   filteredPatients = signal<Patient[]>([]);
@@ -891,7 +518,7 @@ export class DailyListComponent implements OnInit {
     weeklyFrequency: 1,
     weekday: ''
   };
-  newPatient: NewPatientForm = this.getEmptyPatientForm();
+
 
   // Configuration — 10-minute slots
   slotHeight = 16; // pixels per 10 minutes
@@ -1305,7 +932,7 @@ export class DailyListComponent implements OnInit {
           this.seriesEditStartDate = series.startDate ? series.startDate.split('T')[0] : this.newAppointment.date;
           this.seriesEditEndDate = series.endDate ? series.endDate.split('T')[0] : '';
           this.seriesEditWeeklyFrequency = series.weeklyFrequency || 1;
-          this.newAppointment.weekday = series.weekday || this.newAppointment.weekday;
+          this.newAppointment.weekday = this.normalizeWeekday(series.weekday) || this.newAppointment.weekday;
         },
         error: () => {
           // Fallback to defaults
@@ -1337,6 +964,20 @@ export class DailyListComponent implements OnInit {
   getMinuteFromTime(time: string): string {
     if (!time) return '--';
     return time.split(':')[1] || '--';
+  }
+
+  // Normalize weekday strings (accept 'Montag' and 'MONDAY')
+  private normalizeWeekday(value?: string | null): string {
+    if (!value) return '';
+    const map: Record<string,string> = {
+      'montag':'MONDAY','dienstag':'TUESDAY','mittwoch':'WEDNESDAY','donnerstag':'THURSDAY','freitag':'FRIDAY','samstag':'SATURDAY','sonntag':'SUNDAY',
+      'monday':'MONDAY','tuesday':'TUESDAY','wednesday':'WEDNESDAY','thursday':'THURSDAY','friday':'FRIDAY','saturday':'SATURDAY','sunday':'SUNDAY'
+    };
+    const key = value.trim();
+    const lower = key.toLowerCase();
+    const candidate = map[key] || map[lower] || key.toUpperCase();
+    const valid = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+    return valid.includes(candidate) ? candidate : '';
   }
 
   adjustHour(which: 'start' | 'end', delta: number): void {
@@ -1413,103 +1054,17 @@ export class DailyListComponent implements OnInit {
 
   // ================== New Patient ==================
 
-  openNewPatientDialog(): void {
-    this.newPatient = this.getEmptyPatientForm();
-    this.showNewPatientModal.set(true);
-  }
 
-  closeNewPatientDialog(): void {
-    this.showNewPatientModal.set(false);
-  }
-
-  saveNewPatient(): void {
-    if (!this.newPatient.firstName || !this.newPatient.lastName) return;
-    this.savingPatient.set(true);
-
-    const request: CreatePatientRequest = {
-      firstName: this.newPatient.firstName,
-      lastName: this.newPatient.lastName,
-      email: this.newPatient.email || undefined,
-      telefon: this.newPatient.telefon || undefined,
-      street: this.newPatient.street || undefined,
-      houseNumber: this.newPatient.houseNumber || undefined,
-      postalCode: this.newPatient.postalCode || undefined,
-      city: this.newPatient.city || undefined,
-      isBWO: this.newPatient.isBWO
-    };
-
-    this.patientService.create(request).subscribe({
-      next: (patient) => {
-        this.savingPatient.set(false);
-        this.toastService.show(`Patient ${patient.firstName} ${patient.lastName} angelegt`, 'success');
-        // Add to list and select
-        this.allPatients.update(list => [...list, patient]);
-        this.selectPatient(patient);
-        this.closeNewPatientDialog();
-      },
-      error: () => {
-        this.savingPatient.set(false);
-        this.toastService.show('Fehler beim Anlegen des Patienten', 'error');
-      }
-    });
-  }
 
   // ================== Save Appointment ==================
 
-  canSaveAppointment(): boolean {
-    const f = this.newAppointment;
-    if (!f.therapistId || !f.patientId || !f.startTime || !f.endTime) return false;
-    if (f.isSeries) {
-      return !!f.date && !!f.seriesEndDate && !!f.weekday && f.weeklyFrequency > 0;
-    }
-    return !!f.date;
-  }
+  // Validation and 'save' flows moved to `AppointmentModalComponent`.
 
-  onSaveClick(): void {
-    if (!this.canSaveAppointment()) return;
-    const editing = this.editingAppointment();
-    // If editing a series appointment and user chose series mode, show confirmation
-    if ((editing?.createdBySeriesAppointment || editing?.appointmentSeriesId) && this.editMode() === 'series') {
-      this.showSeriesEditConfirmModal.set(true);
-    } else {
-      this.saveAppointment();
-    }
-  }
+  // onSaveClick moved to `AppointmentModalComponent`.
 
-  confirmSeriesEdit(): void {
-    this.showSeriesEditConfirmModal.set(false);
-    this.saveAppointment();
-  }
 
-  cancelSeriesEdit(): void {
-    this.showSeriesEditConfirmModal.set(false);
-  }
 
-  saveAppointment(): void {
-    if (!this.canSaveAppointment()) return;
-    this.savingAppointment.set(true);
-
-    const editing = this.editingAppointment();
-    if (editing) {
-      // Check if editing a series appointment and user chose to edit the series master
-      if ((editing.createdBySeriesAppointment || editing.appointmentSeriesId) && this.editMode() === 'series') {
-        const seriesId = editing.appointmentSeriesId;
-        if (seriesId !== undefined && seriesId !== null) {
-          this.updateSeriesMaster(seriesId);
-        } else {
-          // series flag present but no seriesId => fallback to single-appointment update
-          this.toastService.show('Serien‑ID fehlt: Änderungen werden nur für diesen Termin gespeichert', 'warning');
-          this.updateExistingAppointment(editing.id);
-        }
-      } else {
-        this.updateExistingAppointment(editing.id);
-      }
-    } else if (this.newAppointment.isSeries) {
-      this.saveSeriesAppointment();
-    } else {
-      this.saveSingleAppointment();
-    }
-  }
+  // Appointment save/update logic has been moved into `AppointmentModalComponent`.
 
   private updateSeriesMaster(seriesId: number): void {
     const dateStr = this.newAppointment.date;
@@ -1654,40 +1209,7 @@ export class DailyListComponent implements OnInit {
     this.editingAppointment.set(null);
   }
 
-  confirmDeleteAppointment(): void {
-    this.showDeleteAppointmentModal.set(true);
-  }
 
-  cancelDeleteAppointment(): void {
-    this.showDeleteAppointmentModal.set(false);
-  }
-
-  deleteAppointment(): void {
-    const apt = this.editingAppointment();
-    if (!apt) return;
-
-    this.deletingAppointment.set(true);
-    this.appointmentService.delete(apt.id).subscribe({
-      next: () => {
-        const message = (apt.createdBySeriesAppointment || apt.appointmentSeriesId)
-          ? 'Termin wurde als Ausfall markiert'
-          : 'Termin wurde gelöscht';
-        this.toastService.show(message, 'success');
-        this.showDeleteAppointmentModal.set(false);
-        this.closeCreateModal();
-        this.loadAppointments();
-        this.appointmentCache.invalidateCache();
-      },
-      error: (err) => {
-        console.error('Error deleting appointment:', err);
-        this.toastService.show('Fehler beim Löschen des Termins', 'error');
-        this.deletingAppointment.set(false);
-      },
-      complete: () => {
-        this.deletingAppointment.set(false);
-      }
-    });
-  }
 
   printPatientAppointments(): void {
     const apt = this.editingAppointment();
@@ -1842,17 +1364,5 @@ export class DailyListComponent implements OnInit {
     };
   }
 
-  private getEmptyPatientForm(): NewPatientForm {
-    return {
-      firstName: '',
-      lastName: '',
-      email: '',
-      telefon: '',
-      street: '',
-      houseNumber: '',
-      postalCode: '',
-      city: '',
-      isBWO: false
-    };
-  }
+
 }

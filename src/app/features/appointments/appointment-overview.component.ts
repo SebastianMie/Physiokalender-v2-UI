@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, Router } from '@angular/router';
 import { Subject, takeUntil, debounceTime, distinctUntilChanged } from 'rxjs';
-import { AppointmentService, Appointment, PageResponse, AppointmentPageParams } from '../../data-access/api/appointment.service';
+import { AppointmentService, Appointment, PageResponse, AppointmentPageParams, AppointmentExtendedPageParams } from '../../data-access/api/appointment.service';
 import { AppointmentSeriesService, AppointmentSeries, CancellationDTO, UpdateAppointmentSeriesRequest } from '../../data-access/api/appointment-series.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService } from '../../data-access/api/patient.service';
@@ -128,6 +128,20 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
             @if (searchTerm) {
               <button class="search-clear" (click)="searchTerm = ''; applyFilters()">&times;</button>
             }
+
+            <!-- Time + Type filters (like patient-detail) -->
+            <div class="apt-filters">
+              <div class="filter-tabs">
+                <button [class.active]="appointmentFilter() === 'upcoming'" (click)="setAppointmentFilter('upcoming')">Kommende</button>
+                <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
+                <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
+              </div>
+              <div class="filter-tabs type-filter">
+                <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
+                <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
+                <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
+              </div>
+            </div>
           </div>
 
           @if (loading()) {
@@ -554,6 +568,11 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
     /* Main Table */
     .table-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 1rem; gap: 0.75rem; }
     .search-bar { position: relative; }
+    .apt-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #F3F4F6; }
+    .filter-tabs { display: flex; gap: 0.25rem; }
+    .filter-tabs button { background: none; border: 1px solid #E5E7EB; padding: 0.25rem 0.5rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: #6B7280; }
+    .filter-tabs button.active { background: #E6F0FF; color: #2563EB; border-color: #3B82F6; }
+    .filter-tabs.type-filter { margin-left: auto; }
     .search-input { width: 100%; padding: 0.6rem 2rem 0.6rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 8px; font-size: 0.875rem; outline: none; background: white; box-sizing: border-box; }
     .search-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
     .search-clear { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); border: none; background: none; font-size: 1.25rem; cursor: pointer; color: #9CA3AF; }
@@ -613,7 +632,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 
     /* Action buttons */
     .action-btns { display: flex; gap: 0.25rem; }
-    .action-btn { width: 28px; height: 28px; border: 1px solid #E5E7EB; background: white; border-radius: 4px; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+    .action-btn { width: 32px; height: 32px; border: 1px solid #E5E7EB; background: white; border-radius: 4px; cursor: pointer; font-size: 1rem; line-height: 1; display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
     .action-btn:hover { background: #EFF6FF; border-color: #3B82F6; }
 
     /* Cancellation display */
@@ -735,6 +754,9 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   filterStatuses = new Set<string>();
   filterSeriesStatuses = new Set<string>();
   filterBWO = false;
+  // time / type filters (like in Patient-Detail)
+  appointmentFilter = signal<'upcoming' | 'past' | 'all'>('all');
+  appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
 
   // Cancellation modal
   showCancellationModal = signal(false);
@@ -866,7 +888,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   private fetchAppointments(): void {
     this.loading.set(true);
 
-    const params: AppointmentPageParams = {
+    const baseParams: AppointmentPageParams = {
       page: this.requestedPage(),
       size: this.pageSize,
       sortBy: this.sortField,
@@ -878,18 +900,44 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       search: this.searchTerm || undefined
     };
 
-    this.cacheService.getPaginated(params).pipe(
-      takeUntil(this.destroy$)
-    ).subscribe({
-      next: (pageResult) => {
-        this.serverPage.set(pageResult);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.toastService.show('Fehler beim Laden der Termine', 'error');
-      }
-    });
+    // Prefer server-side extended API when time/type filters are active; otherwise keep using cacheService
+    const timeFilter = this.appointmentFilter() === 'all' ? undefined : (this.appointmentFilter() as 'upcoming' | 'past');
+    const appointmentType = this.appointmentTypeFilter() === 'all' ? undefined : (this.appointmentTypeFilter() as 'series' | 'single');
+
+    if (timeFilter || appointmentType) {
+      const extParams: AppointmentExtendedPageParams = {
+        ...baseParams,
+        timeFilter,
+        appointmentType
+      };
+
+      this.appointmentService.getPaginatedExtended(extParams).pipe(
+        takeUntil(this.destroy$)
+      ).subscribe({
+        next: (pageResult) => {
+          this.serverPage.set(pageResult);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.loading.set(false);
+          this.toastService.show('Fehler beim Laden der Termine', 'error');
+        }
+      });
+
+    } else {
+      this.cacheService.getPaginated(baseParams).pipe(
+        takeUntil(this.destroy$)
+      ).subscribe({
+        next: (pageResult) => {
+          this.serverPage.set(pageResult);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.loading.set(false);
+          this.toastService.show('Fehler beim Laden der Termine', 'error');
+        }
+      });
+    }
   }
 
   /**
@@ -983,6 +1031,22 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       result = result.filter(a => a.isBWO);
     }
 
+    // appointment type filter (client-side fallback)
+    if (this.appointmentTypeFilter() === 'series') {
+      result = result.filter(a => a.createdBySeriesAppointment || !!a.appointmentSeriesId);
+    } else if (this.appointmentTypeFilter() === 'single') {
+      result = result.filter(a => !(a.createdBySeriesAppointment || !!a.appointmentSeriesId));
+    }
+
+    // time filter (client-side fallback)
+    if (this.appointmentFilter() === 'past') {
+      const today = new Date().toISOString().split('T')[0];
+      result = result.filter(a => (a.date || '').split('T')[0] < today);
+    } else if (this.appointmentFilter() === 'upcoming') {
+      const today = new Date().toISOString().split('T')[0];
+      result = result.filter(a => (a.date || '').split('T')[0] >= today);
+    }
+
     return result;
   });
 
@@ -1060,6 +1124,24 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   toggleSeriesStatus(status: string): void {
     if (this.filterSeriesStatuses.has(status)) this.filterSeriesStatuses.delete(status);
     else this.filterSeriesStatuses.add(status);
+    this.applyFilters();
+  }
+
+  /**
+   * Time filter (kommend / vergangen / alle) — server-side via getPaginatedExtended when active
+   */
+  setAppointmentFilter(filter: 'upcoming' | 'past' | 'all'): void {
+    this.appointmentFilter.set(filter);
+    this.requestedPage.set(0);
+    this.applyFilters();
+  }
+
+  /**
+   * Appointment type filter (serie / einzel / alle)
+   */
+  setAppointmentTypeFilter(filter: 'all' | 'series' | 'single'): void {
+    this.appointmentTypeFilter.set(filter);
+    this.requestedPage.set(0);
     this.applyFilters();
   }
 

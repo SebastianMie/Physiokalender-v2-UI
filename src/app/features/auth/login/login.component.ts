@@ -26,7 +26,7 @@ import { ToastService } from '../../../core/services/toast.service';
               class="form-input"
               [class.error]="isFieldInvalid('username')"
               formControlName="username"
-              placeholder="max.mustermann"
+              placeholder="Benutzernamen eingeben"
               autocomplete="username"
             />
             <span class="error-message" *ngIf="isFieldInvalid('username')">
@@ -59,11 +59,6 @@ import { ToastService } from '../../../core/services/toast.service';
           </button>
         </form>
 
-        <div class="demo-info">
-          <p>Demo-Zugangsdaten:</p>
-          <p class="credentials">Benutzer: <strong>max.mustermann</strong></p>
-          <p class="credentials">Passwort: <strong>password</strong></p>
-        </div>
       </div>
     </div>
   `,
@@ -246,7 +241,6 @@ export class LoginComponent implements OnInit {
 
     this.authService.login({ username, password }).subscribe({
       next: (response) => {
-        this.toastService.success('Erfolgreich angemeldet!');
         this.router.navigateByUrl(this.returnUrl);
       },
       error: (error) => {

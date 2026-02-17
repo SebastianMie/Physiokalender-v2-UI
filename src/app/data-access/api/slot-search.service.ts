@@ -19,6 +19,8 @@ export interface SlotSearchRequest {
   excludePatientId?: number;
 }
 
+
+
 /**
  * Single available slot.
  */
@@ -68,6 +70,7 @@ export class SlotSearchService {
     return this.http.post<SlotSearchResponse>(`${this.apiUrl}/search`, request);
   }
 
+
   /**
    * Helper: Convert DayPart to German label.
    */
@@ -75,7 +78,7 @@ export class SlotSearchService {
     switch (dayPart) {
       case 'MORNING': return 'Morgens (6-12 Uhr)';
       case 'AFTERNOON': return 'Nachmittags (12-17 Uhr)';
-      case 'EVENING': return 'Abends (17-21 Uhr)';
+      case 'EVENING': return 'Abends (19:30-21 Uhr)';
       default: return dayPart;
     }
   }

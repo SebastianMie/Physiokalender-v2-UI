@@ -457,7 +457,7 @@ export class PatientListComponent implements OnInit, OnDestroy {
 
   patientAppointments = computed(() => {
     const id = this.selectedPatient()?.id;
-    return id ? this.allAppointments().filter(a => a.patientId === id && !a.createdBySeriesAppointment).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
+    return id ? this.allAppointments().filter(a => a.patientId === id && !(a.createdBySeriesAppointment || a.appointmentSeriesId)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : [];
   });
 
   patientSeries = computed(() => {

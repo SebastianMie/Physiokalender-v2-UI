@@ -213,12 +213,12 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                 <table class="apt-table">
                   <thead>
                     <tr>
-                      <th>Datum</th>
-                      <th>Zeit</th>
-                      <th>Therapeut</th>
-                      <th>Typ</th>
+                      <th class="col-date sortable" (click)="sortAppointments('date')">Datum <span class="sort-icon">{{ getSortIcon('date') || '⇅' }}</span></th>
+                      <th class="col-time sortable" (click)="sortAppointments('time')">Zeit <span class="sort-icon">{{ getSortIcon('time') || '⇅' }}</span></th>
+                      <th class="sortable" (click)="sortAppointments('therapist')">Therapeut <span class="sort-icon">{{ getSortIcon('therapist') || '⇅' }}</span></th>
+                      <th class="sortable" (click)="sortAppointments('type')">Typ <span class="sort-icon">{{ getSortIcon('type') || '⇅' }}</span></th>
                       <th>Behandlung</th>
-                      <th>Status</th>
+                      <th class="sortable" (click)="sortAppointments('status')">Status <span class="sort-icon">{{ getSortIcon('status') || '⇅' }}</span></th>
                       <th>Kommentar</th>
                     </tr>
                   </thead>
@@ -234,7 +234,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                         </td>
                         <td>
                           <div class="type-tags">
-                            @if (apt.createdBySeriesAppointment) {
+                            @if (apt.createdBySeriesAppointment || apt.appointmentSeriesId) {
                               <span class="tag series">Serie</span>
                             } @else {
                               <span class="tag single">Einzel</span>
@@ -390,6 +390,9 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .apt-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     .apt-table thead { position: sticky; top: 0; z-index: 1; }
     .apt-table th { background: #F9FAFB; padding: 0.5rem 0.6rem; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #E5E7EB; white-space: nowrap; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .apt-table th.sortable { cursor: pointer; user-select: none; }
+    .apt-table th.sortable:hover { background: #EFF6FF; color: #2563EB; }
+    .sort-icon { margin-left: 0.35rem; font-size: 0.75rem; color: #9CA3AF; }
     .apt-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #F3F4F6; color: #374151; vertical-align: middle; }
     .apt-table tbody tr { cursor: pointer; transition: background 0.1s; }
     .apt-table tbody tr:hover { background: #F0F7FF; }
@@ -429,7 +432,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .info-value.status-inactive { color: #DC2626; font-weight: 500; }
 
     /* Form Actions with Cancel */
-    .form-actions { padding-top: 0.5rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .form-actions { padding-top: 0.5rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
     .btn-cancel { padding: 0.45rem 1rem; background: white; color: #6B7280; border: 1px solid #D1D5DB; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
     .btn-cancel:hover { background: #F3F4F6; }
 
@@ -446,7 +449,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .modal-desc { color: #6B7280; margin: 0 0 1rem 0; font-size: 0.8rem; }
     .modal-warning { color: #374151; margin: 0 0 0.5rem 0; font-size: 0.875rem; }
     .modal-hint { color: #6B7280; margin: 0 0 1.25rem 0; font-size: 0.8rem; background: #FEF3C7; padding: 0.5rem 0.75rem; border-radius: 6px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .modal-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
     .btn-danger { padding: 0.45rem 1rem; background: #DC2626; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
     .btn-danger:hover { background: #B91C1C; }
 
@@ -517,6 +520,10 @@ export class PatientDetailComponent implements OnInit {
     { value: 'NO_SHOW', label: 'N/A' }
   ];
 
+  // Appointment filtering + client-side sorting for patient detail table
+  appointmentSortField = signal<'date'|'time'|'therapist'|'type'|'status'>('date');
+  appointmentSortDir = signal<'asc'|'desc'>('desc');
+
   filteredAppointments = computed(() => {
     let apts = this.appointments();
     const filter = this.appointmentFilter();
@@ -534,16 +541,47 @@ export class PatientDetailComponent implements OnInit {
 
     switch (typeFilter) {
       case 'series':
-        apts = apts.filter(a => a.createdBySeriesAppointment);
+        // treat appointments as part of a series if either flag or seriesId is present
+        apts = apts.filter(a => a.createdBySeriesAppointment || !!a.appointmentSeriesId);
         break;
       case 'single':
-        apts = apts.filter(a => !a.createdBySeriesAppointment);
+        apts = apts.filter(a => !(a.createdBySeriesAppointment || !!a.appointmentSeriesId));
         break;
     }
 
     if (this.filterStatus) {
       apts = apts.filter(a => a.status === this.filterStatus);
     }
+
+    // client-side sorting
+    const field = this.appointmentSortField();
+    const dir = this.appointmentSortDir();
+
+    apts = apts.slice().sort((a, b) => {
+      let cmp = 0;
+      switch (field) {
+        case 'date':
+          cmp = a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime);
+          break;
+        case 'time':
+          cmp = a.startTime.localeCompare(b.startTime) || a.date.localeCompare(b.date);
+          break;
+        case 'therapist':
+          cmp = (a.therapistName || '').localeCompare(b.therapistName || '');
+          break;
+        case 'type':
+          const ta = (a.createdBySeriesAppointment || !!a.appointmentSeriesId) ? 0 : 1;
+          const tb = (b.createdBySeriesAppointment || !!b.appointmentSeriesId) ? 0 : 1;
+          cmp = ta - tb;
+          break;
+        case 'status':
+          cmp = (a.status || '').localeCompare(b.status || '');
+          break;
+        default:
+          cmp = 0;
+      }
+      return dir === 'asc' ? cmp : -cmp;
+    });
 
     return apts;
   });
@@ -681,6 +719,20 @@ export class PatientDetailComponent implements OnInit {
 
   toggleStatusFilter(status: string): void {
     this.filterStatus = this.filterStatus === status ? '' : status;
+  }
+
+  // Sorting helpers for appointments table
+  sortAppointments(field: 'date'|'time'|'therapist'|'type'|'status') {
+    if (this.appointmentSortField() === field) {
+      this.appointmentSortDir.set(this.appointmentSortDir() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.appointmentSortField.set(field);
+      this.appointmentSortDir.set(field === 'date' ? 'desc' : 'asc');
+    }
+  }
+
+  getSortIcon(field: 'date'|'time'|'therapist'|'type'|'status'): string {
+    return this.appointmentSortField() !== field ? '' : (this.appointmentSortDir() === 'asc' ? '↑' : '↓');
   }
 
   goBack(): void {

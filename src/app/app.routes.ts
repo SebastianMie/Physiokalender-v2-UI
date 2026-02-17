@@ -95,6 +95,13 @@ const mainRoutes: Routes = [
               ),
           },
           {
+            path: 'statistics',
+            loadComponent: () =>
+              import('./features/admin/statistics.component').then(
+                (m) => m.StatisticsComponent
+              ),
+          },
+          {
             path: 'settings',
             loadComponent: () =>
               import('./features/admin/settings.component').then(

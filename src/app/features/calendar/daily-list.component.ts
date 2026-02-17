@@ -154,7 +154,7 @@ interface NewPatientForm {
                     [class.cancelled]="apt.status === 'CANCELLED'"
                     [class.completed]="apt.status === 'COMPLETED'"
                     [class.bwo]="apt.isBWO"
-                    [class.series]="apt.createdBySeriesAppointment"
+                    [class.series]="apt.createdBySeriesAppointment || apt.appointmentSeriesId"
                     [class.hotair-card]="apt.isHotair && !apt.isUltrasonic && !apt.isElectric"
                     [class.ultra-card]="apt.isUltrasonic && !apt.isHotair && !apt.isElectric"
                     [class.electro-card]="apt.isElectric && !apt.isHotair && !apt.isUltrasonic"
@@ -167,7 +167,7 @@ interface NewPatientForm {
                       <div class="apt-comment">{{ apt.comment }}</div>
                     }
                     <div class="apt-tags">
-                      @if (apt.createdBySeriesAppointment) {
+                      @if (apt.createdBySeriesAppointment || apt.appointmentSeriesId) {
                         <span class="apt-tag series-tag">Serie</span>
                       }
                       @if (apt.isBWO) {
@@ -217,7 +217,7 @@ interface NewPatientForm {
           <div class="modal modal-lg" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h2>{{ editingAppointment() ? 'Termin bearbeiten' : (newAppointment.isSeries ? 'Neuen Serientermin anlegen' : 'Neuen Termin anlegen') }}</h2>
-              @if (editingAppointment()?.createdBySeriesAppointment && editingAppointment()?.appointmentSeriesId) {
+              @if (editingAppointment()?.appointmentSeriesId) {
                 <div class="edit-mode-header">
                   <span class="edit-mode-label">Nur diesen Termin bearbeiten?</span>
                   <div class="edit-mode-btns">
@@ -315,10 +315,10 @@ interface NewPatientForm {
                          [(ngModel)]="newAppointment.date"
                          name="date"
                          required
-                         [disabled]="!!(editingAppointment()?.createdBySeriesAppointment && editMode() === 'series')" />
+                         [disabled]="!!((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) && editMode() === 'series')" />
                 </div>
                 <div class="form-group note-column">
-                  @if (editingAppointment()?.createdBySeriesAppointment && editMode() === 'series') {
+                  @if ((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) && editMode() === 'series') {
                     <div class="form-note">Datum wird bei Serienänderungen ignoriert</div>
                   }
                 </div>
@@ -497,10 +497,10 @@ interface NewPatientForm {
         <div class="modal-overlay" (click)="cancelDeleteAppointment()">
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>{{ editingAppointment()?.createdBySeriesAppointment ? 'Serientermin absagen' : 'Termin löschen' }}</h2>
+              <h2>{{ (editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) ? 'Serientermin absagen' : 'Termin löschen' }}</h2>
               <button class="btn-close" (click)="cancelDeleteAppointment()">&times;</button>
             </div>
-            @if (editingAppointment()?.createdBySeriesAppointment) {
+            @if (editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) {
               <p>Dieser Termin gehört zu einer Serie. Der Termin wird als <strong>Ausfall</strong> markiert und kann in der Serienübersicht verwaltet werden.</p>
             } @else {
               <p>Möchten Sie diesen Termin wirklich löschen?</p>
@@ -509,7 +509,7 @@ interface NewPatientForm {
               <div class="delete-info">
                 <strong>{{ apt.patientName }}</strong><br>
                 {{ apt.date | date:'dd.MM.yyyy' }} · {{ formatTime(apt.startTime) }} - {{ formatTime(apt.endTime) }}
-                @if (apt.createdBySeriesAppointment) {
+                @if (apt.createdBySeriesAppointment || apt.appointmentSeriesId) {
                   <span class="series-badge">Serientermin</span>
                 }
               </div>
@@ -517,7 +517,7 @@ interface NewPatientForm {
             <div class="modal-actions">
               <button type="button" class="btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
               <button type="button" class="btn-danger" (click)="deleteAppointment()" [disabled]="deletingAppointment()">
-                {{ deletingAppointment() ? 'Wird verarbeitet...' : (editingAppointment()?.createdBySeriesAppointment ? 'Als Ausfall markieren' : 'Löschen') }}
+                {{ deletingAppointment() ? 'Wird verarbeitet...' : ((editingAppointment()?.createdBySeriesAppointment || editingAppointment()?.appointmentSeriesId) ? 'Als Ausfall markieren' : 'Löschen') }}
               </button>
             </div>
           </div>
@@ -1469,7 +1469,7 @@ export class DailyListComponent implements OnInit {
     if (!this.canSaveAppointment()) return;
     const editing = this.editingAppointment();
     // If editing a series appointment and user chose series mode, show confirmation
-    if (editing?.createdBySeriesAppointment && editing?.appointmentSeriesId && this.editMode() === 'series') {
+    if ((editing?.createdBySeriesAppointment || editing?.appointmentSeriesId) && this.editMode() === 'series') {
       this.showSeriesEditConfirmModal.set(true);
     } else {
       this.saveAppointment();
@@ -1492,8 +1492,15 @@ export class DailyListComponent implements OnInit {
     const editing = this.editingAppointment();
     if (editing) {
       // Check if editing a series appointment and user chose to edit the series master
-      if (editing.createdBySeriesAppointment && editing.appointmentSeriesId && this.editMode() === 'series') {
-        this.updateSeriesMaster(editing.appointmentSeriesId);
+      if ((editing.createdBySeriesAppointment || editing.appointmentSeriesId) && this.editMode() === 'series') {
+        const seriesId = editing.appointmentSeriesId;
+        if (seriesId !== undefined && seriesId !== null) {
+          this.updateSeriesMaster(seriesId);
+        } else {
+          // series flag present but no seriesId => fallback to single-appointment update
+          this.toastService.show('Serien‑ID fehlt: Änderungen werden nur für diesen Termin gespeichert', 'warning');
+          this.updateExistingAppointment(editing.id);
+        }
       } else {
         this.updateExistingAppointment(editing.id);
       }
@@ -1662,7 +1669,7 @@ export class DailyListComponent implements OnInit {
     this.deletingAppointment.set(true);
     this.appointmentService.delete(apt.id).subscribe({
       next: () => {
-        const message = apt.createdBySeriesAppointment
+        const message = (apt.createdBySeriesAppointment || apt.appointmentSeriesId)
           ? 'Termin wurde als Ausfall markiert'
           : 'Termin wurde gelöscht';
         this.toastService.show(message, 'success');

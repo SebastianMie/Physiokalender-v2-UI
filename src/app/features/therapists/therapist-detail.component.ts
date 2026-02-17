@@ -190,7 +190,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                         </td>
                         <td>
                           <div class="type-tags">
-                            @if (apt.createdBySeriesAppointment) {
+                            @if (apt.createdBySeriesAppointment || apt.appointmentSeriesId) {
                               <span class="tag series">Serie</span>
                             } @else {
                               <span class="tag single">Einzel</span>

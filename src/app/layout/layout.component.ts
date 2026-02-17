@@ -8,7 +8,7 @@ import { EnvironmentService } from '../core/services/environment.service';
 import { EnvironmentBannerComponent } from '../shared/ui/environment-banner/environment-banner.component';
 import { PatientService } from '../data-access/api/patient.service';
 import { AppointmentService } from '../data-access/api/appointment.service';
-import { Subject } from 'rxjs';
+import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 import { SearchbarComponent } from '../shared/ui/searchbar.component';
@@ -58,6 +58,9 @@ import { SearchbarComponent } from '../shared/ui/searchbar.component';
                     </a>
                     <a routerLink="/dashboard/admin/audit" routerLinkActive="active" class="dropdown-item">
                       Audit‑Events
+                    </a>
+                    <a routerLink="/dashboard/admin/statistics" routerLinkActive="active" class="dropdown-item">
+                      Statistiken
                     </a>
                     <div class="dropdown-divider"></div>
                     <a routerLink="/dashboard/admin/settings" routerLinkActive="active" class="dropdown-item">
@@ -539,26 +542,84 @@ export class LayoutComponent implements OnInit, OnDestroy {
     }
 
     fetchSearchResults(term: string) {
-      // Nur Termine serverseitig suchen (dateFrom as yyyy-MM-dd)
-      const dateOnly = new Date().toISOString().split('T')[0];
-      this.appointmentService.getPaginated({ search: term, dateFrom: dateOnly, size: 30 }).subscribe({
-        // request more results so dropdown can scroll when there are many matches
-        next: (res: any) => {
-          const appointmentResults = (res.content || []).map((a: any) => ({
+      // Search patients and appointments — appointments only from today (present + future)
+      const patient$ = this.patientService.getPaginated({ search: term, size: 8 });
+      const dateOnly = new Date().toISOString().split('T')[0]; // yyyy-MM-dd
+      const appt$ = this.appointmentService.getPaginated({ search: term, dateFrom: dateOnly, size: 30 });
+
+      forkJoin([patient$, appt$]).subscribe({
+        next: ([pRes, aRes]: any) => {
+          const patientResults = (pRes?.content || []).map((p: any) => ({
+            type: 'patient',
+            id: p.id,
+            name: p.fullName,
+            patient: p
+          }));
+
+          const appointmentResults = (aRes?.content || []).map((a: any) => ({
             type: 'appointment',
             id: a.id,
             date: a.date,
             patientName: a.patientName,
             appointment: a
           }));
-          // sort by appointment datetime ascending (soonest/upcoming first)
+
+          // sort appointments by appointment datetime ascending (soonest first)
           appointmentResults.sort((a: any, b: any) => {
             const aTime = new Date(a.appointment?.startTime || a.date || 0).getTime();
             const bTime = new Date(b.appointment?.startTime || b.date || 0).getTime();
-            return aTime - bTime; // ascending => soonest first
+            return aTime - bTime;
           });
-          // Show only appointments in the header search for now
-          this.searchResults = appointmentResults;
+
+          // If we found matching patients, also fetch ALL appointments for those patients
+          // (include past + future) and merge them into the appointment hits.
+          if (patientResults.length > 0) {
+            const patientsToQuery = patientResults.slice(0, 3); // limit to first 3 to avoid too many requests
+            const apptCalls = patientsToQuery.map((p: any) => this.appointmentService.getByPatient(p.id));
+
+            if (apptCalls.length > 0) {
+              forkJoin(apptCalls).subscribe(
+                (val: unknown) => {
+                  const arrays = val as any[];
+                  const extraPatientAppointments: any[] = [];
+                  // include ONLY future single appointments for the matched patient(s), regardless of status
+                  const today = dateOnly; // yyyy-MM-dd
+                  arrays.forEach((arr: any[]) => (arr || []).forEach((a: any) => {
+                    const apptDate = (a.date || '').split('T')[0];
+                    const isFuture = apptDate >= today;
+                    const isSingle = !(a.createdBySeriesAppointment || a.appointmentSeriesId);
+                    if (isFuture && isSingle) {
+                      extraPatientAppointments.push({ type: 'appointment', id: a.id, date: a.date, patientName: a.patientName, appointment: a });
+                    }
+                  }));
+
+                  // merge and dedupe appointment results (keep unique by id)
+                  const map = new Map<number, any>();
+                  [...appointmentResults, ...extraPatientAppointments].forEach((x: any) => {
+                    if (!map.has(x.id)) map.set(x.id, x);
+                  });
+
+                  const combinedAppointments = Array.from(map.values());
+                  combinedAppointments.sort((a: any, b: any) => {
+                    const aTime = new Date(a.appointment?.startTime || a.date || 0).getTime();
+                    const bTime = new Date(b.appointment?.startTime || b.date || 0).getTime();
+                    return aTime - bTime;
+                  });
+
+                  const appointmentHits = combinedAppointments.slice(0, 30);
+                  this.searchResults = [...patientResults, ...appointmentHits];
+                },
+                () => {
+                  // fallback to the regular appointmentResults on error
+                  this.searchResults = [...patientResults, ...appointmentResults];
+                }
+              );
+              return; // handled in inner subscription
+            }
+          }
+
+          // default: show matching patients first, then upcoming appointment hits
+          this.searchResults = [...patientResults, ...appointmentResults];
         },
         error: () => {
           this.searchResults = [];

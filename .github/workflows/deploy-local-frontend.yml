@@ -50,8 +50,15 @@ jobs:
           echo "compose_file=$COMPOSE_FILE" >> $GITHUB_OUTPUT
           echo "health_url=$HEALTH_URL" >> $GITHUB_OUTPUT
 
-      - name: Build Docker image
-        run: docker build -t ${{ steps.vars.outputs.image }} .
+      - name: Build Docker image (use prebuilt dist when present)
+        run: |
+          if [ -d dist ] && [ -f dist/index.html ]; then
+            echo "Found prebuilt dist/ — building lightweight runtime image"
+            docker build -f Dockerfile.runtime -t ${{ steps.vars.outputs.image }} .
+          else
+            echo "No dist/ found — fallback to full Dockerfile build"
+            docker build -t ${{ steps.vars.outputs.image }} .
+          fi
 
       - name: Start container with docker compose
         if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') }}

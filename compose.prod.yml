@@ -36,3 +36,9 @@ services:
           memory: 64M
     networks:
       - physio-prod-network
+
+networks:
+  physio-prod-network:
+    name: physio-prod-network
+    driver: bridge
+    external: true

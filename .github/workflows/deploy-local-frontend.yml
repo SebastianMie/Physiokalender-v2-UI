@@ -36,19 +36,28 @@ jobs:
         run: npm run build -- --configuration=production
 
       - id: vars
-        name: Determine environment & targets
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.environment }}" ]; then
-            ENV="${{ github.event.inputs.environment }}"
-          else
-            BRANCH=${GITHUB_REF##*/}
-            if [ "$BRANCH" = "master" ]; then ENV=prod; else ENV=test; fi
-          fi
-          if [ "$ENV" = "prod" ]; then IMAGE=physio-prod-frontend:latest; COMPOSE_FILE=compose.prod.yml; HEALTH_URL="http://127.0.0.1/"; else IMAGE=physio-test-frontend:latest; COMPOSE_FILE=compose.test.yml; HEALTH_URL="http://127.0.0.1:4201/"; fi
-          echo "env=$ENV" >> $GITHUB_OUTPUT
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-          echo "compose_file=$COMPOSE_FILE" >> $GITHUB_OUTPUT
-          echo "health_url=$HEALTH_URL" >> $GITHUB_OUTPUT
+        name: Determine environment & targets (cross-platform)
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const eventName = process.env.GITHUB_EVENT_NAME;
+            const payload = require(process.env.GITHUB_EVENT_PATH || '{}');
+            const inputs = (payload && payload.inputs) ? payload.inputs : {};
+            let env = '';
+            if (eventName === 'workflow_dispatch' && inputs.environment) {
+              env = inputs.environment;
+            } else {
+              const ref = process.env.GITHUB_REF || '';
+              const branch = ref.split('/').pop();
+              env = (branch === 'master') ? 'prod' : 'test';
+            }
+            const image = (env === 'prod') ? 'physio-prod-frontend:latest' : 'physio-test-frontend:latest';
+            const compose_file = (env === 'prod') ? 'compose.prod.yml' : 'compose.test.yml';
+            const health_url = (env === 'prod') ? 'http://127.0.0.1/' : 'http://127.0.0.1:4201/';
+            core.setOutput('env', env);
+            core.setOutput('image', image);
+            core.setOutput('compose_file', compose_file);
+            core.setOutput('health_url', health_url);
 
       - name: Build Docker image (use prebuilt dist when present)
         run: |

@@ -35,3 +35,9 @@ services:
           memory: 64M
     networks:
       - physio-test-network
+
+networks:
+  physio-test-network:
+    name: physio-test-network
+    driver: bridge
+    external: true

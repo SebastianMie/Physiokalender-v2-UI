@@ -8,7 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: physio-test
+    container_name: physio-test-frontend
     image: physio-test-frontend:latest
     restart: unless-stopped
     environment:

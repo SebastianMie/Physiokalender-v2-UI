@@ -1,0 +1,65 @@
+name: Build & deploy frontend locally (test | prod)
+
+on:
+  push:
+    branches: [ test, master ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (test|prod). If empty, branch determines environment.'
+        required: false
+        default: ''
+      deploy:
+        description: 'If true (manual), run docker compose up after build'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy-local:
+    runs-on: [self-hosted]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (production)
+        run: npm run build -- --configuration=production
+
+      - id: vars
+        name: Determine environment & targets
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.environment }}" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            BRANCH=${GITHUB_REF##*/}
+            if [ "$BRANCH" = "master" ]; then ENV=prod; else ENV=test; fi
+          fi
+          if [ "$ENV" = "prod" ]; then IMAGE=physio-prod-frontend:latest; COMPOSE_FILE=compose.prod.yml; HEALTH_URL="http://127.0.0.1/"; else IMAGE=physio-test-frontend:latest; COMPOSE_FILE=compose.test.yml; HEALTH_URL="http://127.0.0.1:4201/"; fi
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "compose_file=$COMPOSE_FILE" >> $GITHUB_OUTPUT
+          echo "health_url=$HEALTH_URL" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        run: docker build -t ${{ steps.vars.outputs.image }} .
+
+      - name: Start container with docker compose
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') }}
+        run: |
+          docker compose -f ${{ steps.vars.outputs.compose_file }} up -d --no-deps
+          sleep 2
+
+      - name: Healthcheck
+        run: |
+          curl -f "${{ steps.vars.outputs.health_url }}" || (echo "healthcheck failed" && exit 2)
+

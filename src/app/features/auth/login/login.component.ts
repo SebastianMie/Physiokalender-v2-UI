@@ -169,7 +169,7 @@ import { ToastService } from '../../../core/services/toast.service';
 
       &:disabled {
         background-color: #D1D5DB;
-        cursor: not-allowed;
+        cursor: default;
       }
     }
 

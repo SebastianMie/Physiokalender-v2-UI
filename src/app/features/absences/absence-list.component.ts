@@ -40,6 +40,14 @@ import { ToastService } from '../../core/services/toast.service';
             <button [class.active]="timeFilter() === 'past'" (click)="setTimeFilter('past')">Vergangen</button>
             <button [class.active]="timeFilter() === 'all'" (click)="setTimeFilter('all')">Alle</button>
           </div>
+
+          <div class="filter-group date-range" style="display:flex; gap:0.5rem; align-items:center; margin-left:0.75rem;">
+            <label style="font-size:0.8rem; color:#6B7280;">Zeitraum</label>
+            <input class="date-input" type="date" [ngModel]="dateFrom()" (ngModelChange)="dateFrom.set($event)" />
+            <span style="color:#9CA3AF;">bis</span>
+            <input class="date-input" type="date" [ngModel]="dateTo()" (ngModelChange)="dateTo.set($event)" />
+            <button class="btn-secondary" style="margin-left:0.25rem;" (click)="dateFrom.set(null); dateTo.set(null)">Zurücksetzen</button>
+          </div>
         }
         @if (absenceFilter() === 'recurring' || absenceFilter() === 'all') {
           <div class="filter-group weekday-filter">
@@ -84,11 +92,8 @@ import { ToastService } from '../../core/services/toast.service';
                       <span class="absence-therapist">{{ getTherapistName(absence.therapistId) }}</span>
                       <span class="absence-time">
                         <!-- For recurring absences, only show time, never a date -->
-                        @if (absence.startTime && absence.endTime) {
-                          {{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}
-                        } @else {
-                          Ganztags
-                        }
+                        <span *ngIf="absence.startTime && absence.endTime">{{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}</span>
+                        <span *ngIf="!(absence.startTime && absence.endTime)">Ganztags</span>
                       </span>
                     </div>
                     <div class="absence-details">
@@ -105,54 +110,47 @@ import { ToastService } from '../../core/services/toast.service';
             }
           </div>
         }
-        <!-- Special Absences Section -->
+        <!-- Special Absences Section (tabular) -->
         @if (specialAbsences().length > 0 && (absenceFilter() === 'all' || absenceFilter() === 'special')) {
           <div class="section">
             <div class="section-header">
               <h2>📅 Einmalige Abwesenheiten</h2>
               <span class="section-count">{{ specialAbsences().length }}</span>
             </div>
-            @for (group of groupedSpecialAbsences(); track group.therapist.id) {
-              <div class="therapist-group">
-                <div class="group-header">
-                  <a [routerLink]="['/dashboard/therapists', group.therapist.id]" class="therapist-link">
-                    {{ group.therapist.fullName }}
-                  </a>
-                  <span class="count-badge">{{ group.absences.length }}</span>
-                </div>
-                <div class="absence-list">
-                  @for (absence of group.absences; track absence.id) {
-                    <div class="absence-item special" [class.past]="isInPast(absence)">
-                      <div class="absence-info">
-                        <span class="absence-day">
-                          {{ formatDate(absence.date!) }}
-                          @if (absence.endDate && absence.endDate !== absence.date) {
-                            - {{ formatDate(absence.endDate) }}
-                          }
-                        </span>
-                        <span class="absence-time">
-                          @if (absence.startTime && absence.endTime) {
-                            {{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}
-                          } @else {
-                            Ganztags
-                          }
-                        </span>
-                      </div>
-                      <div class="absence-details">
-                        <span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span>
-                        @if (isInPast(absence)) {
-                          <span class="past-badge">Vergangen</span>
-                        }
-                      </div>
-                      <div class="absence-actions">
+
+            <div class="table-wrapper special-absences-table">
+              <table class="abs-table">
+                <thead>
+                  <tr>
+                    <th>Datum</th>
+                    <th>Therapeut</th>
+                    <th>Zeit</th>
+                    <th>Grund</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (absence of specialAbsences(); track absence.id) {
+                    <tr [class.past]="isInPast(absence)">
+                      <td class="col-date">
+                        {{ formatDate(absence.date!) }}
+                        <ng-container *ngIf="absence.endDate && absence.endDate !== absence.date"> - {{ formatDate(absence.endDate) }}</ng-container>
+                      </td>
+                      <td class="col-therapist">{{ getTherapistName(absence.therapistId) }}</td>
+                      <td class="col-time">
+                        <span *ngIf="absence.startTime && absence.endTime">{{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}</span>
+                        <span *ngIf="!(absence.startTime && absence.endTime)">Ganztags</span>
+                      </td>
+                      <td class="col-reason">{{ absence.reason || '–' }}</td>
+                      <td class="col-actions">
                         <button class="btn-icon" (click)="openEditModal(absence)" title="Bearbeiten">✏️</button>
                         <button class="btn-icon btn-delete" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   }
-                </div>
-              </div>
-            }
+                </tbody>
+              </table>
+            </div>
           </div>
         }
       }
@@ -273,7 +271,7 @@ import { ToastService } from '../../core/services/toast.service';
     .filter-tabs button.active { background: #3B82F6; color: white; }
     .filter-tabs button:hover:not(.active) { background: #F3F4F6; }
     .time-filter { margin-left: auto; }
-
+    input[type="text"], input[type="date"], input[type="time"], select { padding:0.45rem; border:1px solid #E5E7EB; border-radius:6px; }
     .loading { text-align: center; padding: 3rem; color: #6B7280; }
     .empty-state { text-align: center; padding: 3rem; color: #9CA3AF; background: #F9FAFB; border-radius: 8px; }
 
@@ -304,6 +302,17 @@ import { ToastService } from '../../core/services/toast.service';
     .absence-item:last-child { border-bottom: none; }
     .absence-item.recurring { background: #F8FAFC; }
     .absence-item.special.past { opacity: 0.6; background: #F9FAFB; }
+
+    /* Table for special absences */
+    .table-wrapper.special-absences-table { max-height: 420px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 8px; }
+    .abs-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .abs-table thead th { background: #F9FAFB; padding: 0.6rem 0.75rem; text-align: left; font-weight: 600; border-bottom: 1px solid #E5E7EB; font-size: 0.75rem; }
+    .abs-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #F3F4F6; color: #374151; }
+    .abs-table tr.past td { opacity: 0.6; }
+    .col-therapist { width: 220px; }
+    .col-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .col-actions { width: 96px; text-align: right; }
+    .col-reason { color: #6B7280; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .absence-info { display: flex; flex-direction: column; gap: 0.125rem; min-width: 150px; }
     .absence-therapist { font-weight: 600; color: #1F2937; font-size: 0.8rem; }
@@ -360,6 +369,10 @@ export class AbsenceListComponent implements OnInit {
   selectedWeekday = signal<string | null>(null);
   collapsedWeekdays = signal<Set<string>>(new Set());
 
+  // optional date range filter for one-time absences
+  dateFrom = signal<string | null>(null);
+  dateTo = signal<string | null>(null);
+
   readonly weekdayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
   readonly weekdayLabels: { [key: string]: string } = {
     'MONDAY': 'Montag',
@@ -400,6 +413,9 @@ export class AbsenceListComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    // collapse all weekdays by default
+    this.collapsedWeekdays.set(new Set(this.weekdayOrder));
+
     this.loadData();
 
     // Debug: Show current user info
@@ -495,7 +511,17 @@ export class AbsenceListComponent implements OnInit {
       });
     }
 
-    // Sort by date
+    // Apply optional custom date range filter (dateFrom / dateTo)
+    const from = this.dateFrom();
+    const to = this.dateTo();
+    if (from) {
+      abs = abs.filter(a => { const endDate = a.endDate || a.date || ''; return endDate >= from; });
+    }
+    if (to) {
+      abs = abs.filter(a => (a.date || '') <= to);
+    }
+
+    // Sort by date (ascending for future/all, descending for past)
     return abs.sort((a, b) => {
       const dateA = a.date || '';
       const dateB = b.date || '';

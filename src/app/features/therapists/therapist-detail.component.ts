@@ -215,11 +215,6 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                   (click)="setAbsenceFilter('special')">
                   Einmalig
                 </button>
-                <button
-                  [class.active]="absenceFilter() === 'all'"
-                  (click)="setAbsenceFilter('all')">
-                  Alle
-                </button>
               </div>
               </div>
             </div>
@@ -230,46 +225,60 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
               <div class="empty-state">Keine Abwesenheiten gefunden</div>
             } @else {
               <div class="absences-list">
-                @for (absence of filteredAbsences(); track absence.id) {
-                  <div class="absence-item" [class.recurring]="absence.absenceType === 'RECURRING'">
-                    <div class="absence-info">
-                      @if (absence.absenceType === 'RECURRING') {
-                        <span class="absence-day">{{ getWeekdayLabel(absence.weekday) }}</span>
-                        <span class="absence-time">
-                          @if (absence.startTime && absence.endTime) {
-                            {{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}
-                          } @else {
-                            Ganztags
-                          }
-                        </span>
-                      } @else {
-                        <span class="absence-day">{{ formatDate(absence.date!) }}
-                          @if (absence.endDate && absence.endDate !== absence.date) {
-                            - {{ formatDate(absence.endDate) }}
-                          }
-                        </span>
-                        <span class="absence-time">
-                          @if (absence.startTime && absence.endTime) {
-                            {{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}
-                          } @else {
-                            Ganztags
-                          }
-                        </span>
+              <!-- Recurring: grouped by weekday Mon→Fri, time‑sorted -->
+              @if ((absenceFilter() === 'recurring' || absenceFilter() === 'all') && recurringByWeekdayGroups().length > 0) {
+                @for (group of recurringByWeekdayGroups(); track group.weekday) {
+                  <div class="weekday-group">
+                    <div class="weekday-header" (click)="toggleWeekdayCollapse(group.weekday)">
+                      <button class="collapse-btn" [class.collapsed]="collapsedWeekdays().has(group.weekday)">{{ collapsedWeekdays().has(group.weekday) ? '▶' : '▼' }}</button>
+                      <span class="weekday-name">{{ group.label }}</span>
+                      <span class="weekday-count">{{ group.absences.length }}</span>
+                    </div>
+
+                    @if (!collapsedWeekdays().has(group.weekday)) {
+                      @for (absence of group.absences; track absence.id) {
+                        <div class="absence-item recurring">
+                          <div class="absence-info">
+                            <span class="absence-day">{{ group.label }}</span>
+                            <span class="absence-time">
+                              <span *ngIf="absence.startTime && absence.endTime">{{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}</span>
+                              <span *ngIf="!(absence.startTime && absence.endTime)">Ganztags</span>
+                            </span>
+                          </div>
+                          <div class="absence-details"><span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span></div>
+                          <div class="absence-actions">
+                            <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
+                            <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
+                          </div>
+                        </div>
                       }
-                    </div>
-                    <div class="absence-details">
-                      <span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span>
-                    </div>
-                    <div class="absence-type">
-                      <span class="type-badge" [class]="absence.absenceType.toLowerCase()">
-                        {{ absence.absenceType === 'RECURRING' ? 'Regelmäßig' : 'Einmalig' }}
-                      </span>
-                      <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
-                      <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
-                    </div>
+                    }
                   </div>
                 }
-              </div>
+              }
+
+              <!-- Special (one-time) - future chronological (falls angezeigt) -->
+              @if ((absenceFilter() === 'special' || absenceFilter() === 'all') && specialFutureAbsencesTherapist().length > 0) {
+                <div class="section">
+                  @for (absence of specialFutureAbsencesTherapist(); track absence.id) {
+                    <div class="absence-item special">
+                      <div class="absence-info">
+                        <span class="absence-day">
+                          {{ formatDate(absence.date!) }}
+                          <ng-container *ngIf="absence.endDate && absence.endDate !== absence.date"> - {{ formatDate(absence.endDate) }}</ng-container>
+                        </span>
+                        <span class="absence-time"><span *ngIf="absence.startTime && absence.endTime">{{ formatTime(absence.startTime) }} - {{ formatTime(absence.endTime) }}</span><span *ngIf="!(absence.startTime && absence.endTime)">Ganztags</span></span>
+                      </div>
+                      <div class="absence-details"><span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span></div>
+                      <div class="absence-actions">
+                        <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
+                        <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
             }
           </div>
         </div>
@@ -634,6 +643,11 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
   absenceFilter = signal<'recurring' | 'special' | 'all'>('all');
 
+  // Weekday grouping (for recurring absences)
+  readonly weekdayOrder = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'];
+  readonly weekdayLabels: { [key: string]: string } = { 'MONDAY':'Montag','TUESDAY':'Dienstag','WEDNESDAY':'Mittwoch','THURSDAY':'Donnerstag','FRIDAY':'Freitag','SATURDAY':'Samstag','SUNDAY':'Sonntag' };
+  collapsedWeekdays = signal<Set<string>>(new Set());
+
   // Server-side pagination for appointments
   private appointmentServerPage = signal<PageResponse<Appointment> | null>(null);
   appointmentPage = signal(0);
@@ -701,7 +715,31 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
     }
   });
 
+  /** Recurring absences grouped by weekday (Mon→Fri) and sorted by startTime */
+  recurringByWeekdayGroups = computed(() => {
+    const abs = this.absences().filter(a => a.absenceType === 'RECURRING');
+    const weekdays = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY'];
+    const groups: { weekday: string; label: string; absences: Absence[] }[] = [];
+    for (const weekday of weekdays) {
+      const items = abs.filter(a => a.weekday === weekday).sort((x, y) => (x.startTime || '').localeCompare(y.startTime || ''));
+      if (items.length > 0) groups.push({ weekday, label: this.weekdayLabels[weekday], absences: items });
+    }
+    return groups;
+  });
+
+  /** Future single (SPECIAL) absences, chronological */
+  specialFutureAbsencesTherapist = computed(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return this.absences()
+      .filter(a => a.absenceType === 'SPECIAL')
+      .filter(a => { const end = a.endDate || a.date || ''; return end >= today; })
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  });
+
   ngOnInit(): void {
+    // Start weekday groups collapsed by default in therapist detail
+    this.collapsedWeekdays.set(new Set(this.weekdayOrder));
+
     // Setup debounced search for appointments
     this.appointmentSearchSubject.pipe(
       debounceTime(300),
@@ -874,6 +912,18 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
       'SUNDAY': 'Sonntag'
     };
     return labels[weekday.toUpperCase()] || weekday;
+  }
+
+  // Toggle collapse state for weekday groups (used by the template)
+  toggleWeekdayCollapse(weekday: string): void {
+    const current = this.collapsedWeekdays();
+    const newSet = new Set(current);
+    if (newSet.has(weekday)) {
+      newSet.delete(weekday);
+    } else {
+      newSet.add(weekday);
+    }
+    this.collapsedWeekdays.set(newSet);
   }
 
   formatTime(timeStr: string): string {

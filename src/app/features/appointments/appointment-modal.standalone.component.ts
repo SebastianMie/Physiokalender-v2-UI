@@ -173,14 +173,34 @@ import { PrintService } from '../../core/services/print.service';
           <div *ngIf="conflictDetails || conflictMessage" class="conflict-box">
             <strong>Konflikt erkannt</strong>
 
-            <div *ngIf="conflictDetails && conflictDetails.length">
-              <div *ngFor="let c of conflictDetails" class="conflict-item">
-                {{ c.message || 'Konflikt mit vorhandenem Termin' }}
-                <ng-container *ngIf="c.conflictingAppointmentId"> — ID: {{ c.conflictingAppointmentId }}</ng-container>
+            <!-- Detailed conflict list (orange warning with icon) -->
+            <div *ngIf="conflictDetails && conflictDetails.length" class="conflict-list" style="margin-top:0.5rem; background:#FFF7ED; border:1px solid #FEEBC8; padding:0.5rem; border-radius:6px;">
+              <div *ngFor="let c of conflictDetails" class="conflict-item" style="display:flex; gap:0.75rem; align-items:flex-start; padding:0.45rem 0;">
+                <div class="conflict-icon" style="color:#F97316; flex-shrink:0;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                </div>
+                <div style="flex:1;">
+                  <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <div class="conflict-patient" style="font-weight:700; color:#92400E;">{{ c.patientName || (selectedPatient?.firstName && selectedPatient?.lastName ? (selectedPatient?.firstName + ' ' + selectedPatient?.lastName) : '') || 'Patient' }}</div>
+                    <div class="conflict-time" style="background:#FFF1E6; color:#92400E; padding:0.15rem 0.5rem; border-radius:4px; font-weight:600;">{{ formatConflictTime(c.startTime) }} – {{ formatConflictTime(c.endTime) }}</div>
+                  </div>
+                  <div class="conflict-desc" style="margin-top:0.25rem; color:#92400E; font-size:0.9rem;">{{ c.message || c.description || 'Konflikt mit vorhandenem Termin' }}</div>
+                </div>
+              </div>
+
+              <div class="conflict-actions" style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.5rem;">
+                <button class="btn btn-primary" (click)="save(true)" [disabled]="savingAppointment()">Speichern (trotz Konflikt)</button>
               </div>
             </div>
 
-            <div *ngIf="(!conflictDetails || conflictDetails.length === 0) && conflictMessage">{{ conflictMessage }}</div>
+            <!-- Fallback single-line conflict message -->
+            <div *ngIf="(!conflictDetails || conflictDetails.length === 0) && conflictMessage" style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; background:#FFF7ED; border:1px solid #FEEBC8; padding:0.4rem; border-radius:6px;">
+              <div style="color:#F97316;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </div>
+              <div style="flex:1; color:#92400E;">{{ conflictMessage }}</div>
+              <div><button class="btn btn-primary" (click)="save(true)" [disabled]="savingAppointment()">Speichern (trotz Konflikt)</button></div>
+            </div>
 
           </div>
         </div>
@@ -496,12 +516,38 @@ export class AppointmentModalComponent implements OnInit {
   showSeriesEditConfirmModal = signal(false);
   conflictMessage: string | null = null;
   // detailed conflict info (if provided by API)
-  conflictDetails: Array<{ message?: string; conflictingAppointmentId?: number }> | null = null;
+  // backend may include patientName/startTime/endTime/description — accept wider shape
+  conflictDetails: Array<{
+    message?: string;
+    description?: string;
+    conflictingAppointmentId?: number;
+    patientName?: string;
+    startTime?: string;
+    endTime?: string;
+    therapistName?: string;
+    date?: string;
+  }> | null = null;
 
   // series edit fields (when editing master)
   seriesEditStartDate = '';
   seriesEditEndDate = '';
   seriesEditWeeklyFrequency = 1;
+
+  // Normalize / dedupe conflict entries and filter self-conflicts
+  private normalizeConflicts(conflicts?: any[] | null): any[] | null {
+    if (!conflicts || !conflicts.length) return null;
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const c of conflicts) {
+      // skip conflicts that reference the appointment currently being edited
+      if (c?.conflictingAppointmentId && this.appointmentId && c.conflictingAppointmentId === this.appointmentId) continue;
+      const key = `${c?.conflictingAppointmentId ?? ''}::${(c?.patientName || '').trim()}::${c?.startTime ?? ''}::${c?.endTime ?? ''}::${(c?.description || c?.message || '').trim()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out.length ? out : null;
+  }
 
   // If modal opened to edit a series directly (no appointment present), this flag helps
   // prefill the form and enable the series edit UI.
@@ -675,6 +721,15 @@ export class AppointmentModalComponent implements OnInit {
   getMinuteFromTime(time: string): string {
     if (!time) return '--';
     return time.split(':')[1] || '--';
+  }
+
+  // Format backend conflict time values (ISO or HH:mm:ss) to HH:MM
+  public formatConflictTime(value?: string | null): string {
+    if (!value) return '--:--';
+    const s = String(value);
+    if (s.includes('T')) return s.split('T')[1].substring(0,5);
+    if (s.indexOf(':') >= 0) return s.substring(0,5);
+    return s;
   }
 
   // Normalize weekday strings (accepts 'Montag', 'monday', 'MONDAY' etc.)
@@ -1041,9 +1096,9 @@ export class AppointmentModalComponent implements OnInit {
 
     // Create new (series or single)
     if (this.form.isSeries) {
-      this.saveSeriesAppointment();
+      this.saveSeriesAppointment(force);
     } else {
-      this.saveSingleAppointment();
+      this.saveSingleAppointment(force);
     }
   }
 
@@ -1069,17 +1124,17 @@ export class AppointmentModalComponent implements OnInit {
           this.saved.emit(result.appointment);
           this.onClose();
         } else if (result.conflictCheck?.hasConflicts) {
-          // show conflict details (no orange warning / override button)
-          this.conflictDetails = result.conflictCheck.conflicts || null;
-          this.conflictMessage = result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
+          // show conflict details (deduped, skip possible self-conflict)
+          this.conflictDetails = this.normalizeConflicts(result.conflictCheck.conflicts || null);
+          this.conflictMessage = this.conflictDetails?.[0]?.message || result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
         }
       },
       error: (err) => {
         this.savingAppointment.set(false);
         if (err.status === 409) {
-          // try to extract conflict details if backend provided them
-          this.conflictDetails = err.error?.conflictCheck?.conflicts || err.error?.conflicts || null;
-          this.conflictMessage = err.error?.message || 'Konflikt erkannt';
+          // try to extract conflict details if backend provided them (dedupe & filter self-conflicts)
+          this.conflictDetails = this.normalizeConflicts(err.error?.conflictCheck?.conflicts || err.error?.conflicts || null);
+          this.conflictMessage = this.conflictDetails?.[0]?.message || err.error?.message || 'Konflikt erkannt';
         } else {
           this.toast.error('Fehler beim Aktualisieren des Termins');
         }
@@ -1087,7 +1142,7 @@ export class AppointmentModalComponent implements OnInit {
     });
   }
 
-  private saveSingleAppointment(): void {
+  private saveSingleAppointment(force = false): void {
     const dateStr = this.form.date;
     const request: CreateAppointmentRequest = {
       therapistId: this.form.therapistId!,
@@ -1101,7 +1156,7 @@ export class AppointmentModalComponent implements OnInit {
       isElectric: this.form.isElectric
     };
 
-    this.appointmentService.create(request).subscribe({
+    this.appointmentService.create(request, force).subscribe({
       next: (result) => {
         this.savingAppointment.set(false);
         if (result.saved) {
@@ -1109,16 +1164,16 @@ export class AppointmentModalComponent implements OnInit {
           this.saved.emit(result.appointment);
           this.onClose();
         } else if (result.conflictCheck?.hasConflicts) {
-          // show conflict details instead of warning / override
-          this.conflictDetails = result.conflictCheck.conflicts || null;
-          this.conflictMessage = result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
+          // show conflict details (deduped) and allow user to force-save
+          this.conflictDetails = this.normalizeConflicts(result.conflictCheck.conflicts || null);
+          this.conflictMessage = this.conflictDetails?.[0]?.message || result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
         }
       },
       error: (err) => {
         this.savingAppointment.set(false);
         if (err.status === 409) {
-          this.conflictDetails = err.error?.conflictCheck?.conflicts || err.error?.conflicts || null;
-          this.conflictMessage = err.error?.message || 'Konflikt erkannt';
+          this.conflictDetails = this.normalizeConflicts(err.error?.conflictCheck?.conflicts || err.error?.conflicts || null);
+          this.conflictMessage = this.conflictDetails?.[0]?.message || err.error?.message || 'Konflikt erkannt';
         } else {
           this.toast.error('Fehler beim Anlegen des Termins');
         }
@@ -1126,7 +1181,7 @@ export class AppointmentModalComponent implements OnInit {
     });
   }
 
-  private saveSeriesAppointment(): void {
+  private saveSeriesAppointment(force = false): void {
     const f = this.form;
     const startDateStr = f.date;
     const endDateStr = f.seriesEndDate;

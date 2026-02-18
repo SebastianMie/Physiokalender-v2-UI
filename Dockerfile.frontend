@@ -1,0 +1,15 @@
+# Lightweight frontend image for test — copies prebuilt `dist/` into nginx
+FROM nginx:1.25-alpine
+
+# Copy prebuilt Angular dist (build context must be the frontend repo root)
+# Copy the inner build folder into nginx root so index.html is served from /
+COPY dist/physiokalender-v2-ui/ /usr/share/nginx/html/
+
+# Use repository nginx config for correct proxy + caching
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

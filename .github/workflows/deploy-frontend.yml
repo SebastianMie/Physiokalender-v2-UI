@@ -1,0 +1,48 @@
+name: Deploy Frontend (test / prod)
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (test|prod)'
+        required: true
+        default: 'test'
+
+jobs:
+  deploy:
+    name: Deploy to target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: vars
+        run: |
+          # if workflow_dispatch, use provided environment; otherwise derive from branch
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then BRANCH="${{ github.event.inputs.environment }}"; else BRANCH=${GITHUB_REF##*/}; fi
+          if [[ "$BRANCH" == "test" ]]; then TAG=dev; elif [[ "$BRANCH" == "master" ]]; then TAG=latest; else TAG=${GITHUB_SHA::8}; fi
+          echo "BRANCH=$BRANCH" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Deploy via SSH to host
+        uses: appleboy/ssh-action@v0.1.9
+        with:
+          host: ${{ secrets.DEPLOY_HOST_TEST }}
+          username: ${{ secrets.DEPLOY_USER_TEST }}
+          key: ${{ secrets.SSH_PRIVATE_KEY_TEST }}
+          port: ${{ secrets.DEPLOY_SSH_PORT_TEST || '22' }}
+          script: |
+            set -euo pipefail
+            IMAGE=ghcr.io/${{ github.repository_owner }}/physiokalender-frontend:${{ steps.vars.outputs.IMAGE_TAG }}
+            echo "Pulling $IMAGE"
+            # login if PAT provided
+            if [ -n "${{ secrets.GHCR_PAT }}" ]; then echo "Logging into GHCR"; echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin; fi
+            docker pull "$IMAGE"
+            # tag to local compose expected image name so compose will pick it up
+            docker tag "$IMAGE" physio-test-frontend:latest || true
+            cd /var/www/physiokalendar || exit 1
+            COMPOSE_PROJECT_NAME=physio-test docker compose -f compose.test.yml --env-file .env.test up -d --no-deps physio-test-frontend
+            sleep 3
+            curl -f http://localhost:4201/ || (echo 'Frontend healthcheck failed' && exit 2)

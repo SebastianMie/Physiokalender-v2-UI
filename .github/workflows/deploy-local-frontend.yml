@@ -2,7 +2,7 @@ name: Build & deploy frontend locally (test | prod)
 
 on:
   push:
-    branches: [ test, master ]
+    tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
       environment:

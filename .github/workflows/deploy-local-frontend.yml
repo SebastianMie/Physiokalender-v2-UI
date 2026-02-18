@@ -56,7 +56,6 @@ jobs:
             core.setOutput('env', env);
             core.setOutput('image', image);
             core.setOutput('compose_file', compose_file);
-            core.setOutput('health_url', health_url);
 
       - name: Check for prebuilt dist (cross-platform)
         id: check_dist

@@ -59,15 +59,22 @@ jobs:
             core.setOutput('compose_file', compose_file);
             core.setOutput('health_url', health_url);
 
-      - name: Build Docker image (use prebuilt dist when present)
-        run: |
-          if [ -d dist ] && [ -f dist/index.html ]; then
-            echo "Found prebuilt dist/ — building lightweight runtime image"
-            docker build -f Dockerfile.runtime -t ${{ steps.vars.outputs.image }} .
-          else
-            echo "No dist/ found — fallback to full Dockerfile build"
-            docker build -t ${{ steps.vars.outputs.image }} .
-          fi
+      - name: Check for prebuilt dist (cross-platform)
+        id: check_dist
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const hasDist = fs.existsSync('dist/index.html');
+            core.setOutput('has_dist', hasDist ? 'true' : 'false');
+
+      - name: Build runtime Docker image
+        if: steps.check_dist.outputs.has_dist == 'true'
+        run: docker build -f Dockerfile.runtime -t ${{ steps.vars.outputs.image }} .
+
+      - name: Build full Docker image
+        if: steps.check_dist.outputs.has_dist != 'true'
+        run: docker build -t ${{ steps.vars.outputs.image }} .
 
       - name: Start container with docker compose
         if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') }}

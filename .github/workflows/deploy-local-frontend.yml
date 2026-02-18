@@ -53,9 +53,11 @@ jobs:
             }
             const image = (env === 'prod') ? 'physio-prod-frontend:latest' : 'physio-test-frontend:latest';
             const compose_file = (env === 'prod') ? 'compose.prod.yml' : 'compose.test.yml';
+            const project = (env === 'prod') ? 'physio-prod' : 'physio-test';
             core.setOutput('env', env);
             core.setOutput('image', image);
             core.setOutput('compose_file', compose_file);
+            core.setOutput('project', project);
 
       - name: Check for prebuilt dist (cross-platform)
         id: check_dist
@@ -77,5 +79,5 @@ jobs:
       - name: Start container with docker compose
         if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') }}
         run: |
-          docker compose -f ${{ steps.vars.outputs.compose_file }} up -d --no-deps
+          docker compose -p ${{ steps.vars.outputs.project }} -f ${{ steps.vars.outputs.compose_file }} up -d --no-deps
           sleep 2

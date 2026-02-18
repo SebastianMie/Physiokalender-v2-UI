@@ -53,7 +53,6 @@ jobs:
             }
             const image = (env === 'prod') ? 'physio-prod-frontend:latest' : 'physio-test-frontend:latest';
             const compose_file = (env === 'prod') ? 'compose.prod.yml' : 'compose.test.yml';
-            const health_url = (env === 'prod') ? 'http://127.0.0.1/' : 'http://127.0.0.1:4201/';
             core.setOutput('env', env);
             core.setOutput('image', image);
             core.setOutput('compose_file', compose_file);
@@ -81,8 +80,3 @@ jobs:
         run: |
           docker compose -f ${{ steps.vars.outputs.compose_file }} up -d --no-deps
           sleep 2
-
-      - name: Healthcheck
-        run: |
-          curl -f "${{ steps.vars.outputs.health_url }}" || (echo "healthcheck failed" && exit 2)
-

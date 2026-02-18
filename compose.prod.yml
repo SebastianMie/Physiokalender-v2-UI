@@ -15,7 +15,6 @@ services:
       API_URL: http://localhost:8082
     ports:
       - "4202:80"
-      - "4202:443"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
@@ -41,4 +40,3 @@ networks:
   physio-prod-network:
     name: physio-prod-network
     driver: bridge
-    external: true

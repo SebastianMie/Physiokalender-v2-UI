@@ -40,4 +40,3 @@ networks:
   physio-test-network:
     name: physio-test-network
     driver: bridge
-    external: true

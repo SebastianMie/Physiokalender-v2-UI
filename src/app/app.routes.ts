@@ -108,6 +108,13 @@ const mainRoutes: Routes = [
                 (m) => m.SettingsComponent
               ),
           },
+          {
+            path: 'backup',
+            loadComponent: () =>
+              import('./features/admin/backup.component').then(
+                (m) => m.BackupComponent
+              ),
+          },
         ],
       },
     ],

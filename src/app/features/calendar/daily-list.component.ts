@@ -522,7 +522,7 @@ export class DailyListComponent implements OnInit {
 
   // Configuration — 10-minute slots
   slotHeight = 16; // pixels per 10 minutes
-  startHour = 7;
+  startHour = 6;
   endHour = 20;
   slotMinutes = 10;
 
@@ -568,9 +568,10 @@ export class DailyListComponent implements OnInit {
         } else {
           // SPECIAL - check date range
           if (!a.date) return false;
-          const startDate = a.date;
-          const endDate = a.endDate || a.date;
-          return dateStr >= startDate && dateStr <= endDate;
+          // Normalize date strings to YYYY-MM-DD format for comparison
+          const startDateStr = this.normalizeDateString(a.date);
+          const endDateStr = this.normalizeDateString(a.endDate || a.date);
+          return dateStr >= startDateStr && dateStr <= endDateStr;
         }
       })
       .map(a => {
@@ -583,6 +584,44 @@ export class DailyListComponent implements OnInit {
           isFullDay: !a.startTime || !a.endTime
         };
       });
+  }
+
+  /** Normalize date strings to YYYY-MM-DD format */
+  private normalizeDateString(dateValue: string | Date | any): string {
+    if (!dateValue) return '';
+
+    // If it's already a YYYY-MM-DD string, return as is
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return dateValue;
+    }
+
+    // If it's an ISO date string (YYYY-MM-DDTHH:mm:ss), extract the date part
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(dateValue)) {
+      return dateValue.split('T')[0];
+    }
+
+    // If it's a Date object, convert it
+    if (dateValue instanceof Date) {
+      const year = dateValue.getFullYear();
+      const month = (dateValue.getMonth() + 1).toString().padStart(2, '0');
+      const day = dateValue.getDate().toString().padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // If it's something else, try to parse it as a date
+    try {
+      const date = new Date(dateValue);
+      if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {
+      console.warn('Could not parse date:', dateValue);
+    }
+
+    return '';
   }
 
   /** All therapist columns with their appointments and absences */

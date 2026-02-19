@@ -66,6 +66,9 @@ import { SearchbarComponent } from '../shared/ui/searchbar.component';
                     <a routerLink="/dashboard/admin/settings" routerLinkActive="active" class="dropdown-item">
                       Stammdaten
                     </a>
+                    <a routerLink="/dashboard/admin/backup" routerLinkActive="active" class="dropdown-item">
+                      Backup sichern
+                    </a>
                   </div>
                 }
               </div>

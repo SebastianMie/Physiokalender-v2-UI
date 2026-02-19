@@ -297,7 +297,7 @@ import { ToastService } from '../../core/services/toast.service';
     .therapist-link:hover { text-decoration: underline; }
     .count-badge { background: #E5E7EB; color: #374151; padding: 0.125rem 0.5rem; border-radius: 10px; font-size: 0.75rem; font-weight: 500; }
 
-    .absence-list { padding: 0.5rem; }
+    .absence-list { padding: 0.5rem; max-height: 450px; overflow-y: auto; }
     .absence-item { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-bottom: 1px solid #F3F4F6; gap: 1rem; }
     .absence-item:last-child { border-bottom: none; }
     .absence-item.recurring { background: #F8FAFC; }
@@ -514,11 +514,29 @@ export class AbsenceListComponent implements OnInit {
     // Apply optional custom date range filter (dateFrom / dateTo)
     const from = this.dateFrom();
     const to = this.dateTo();
-    if (from) {
-      abs = abs.filter(a => { const endDate = a.endDate || a.date || ''; return endDate >= from; });
-    }
-    if (to) {
-      abs = abs.filter(a => (a.date || '') <= to);
+    if (from || to) {
+      abs = abs.filter(a => {
+        const absStart = a.date || '';
+        const absEnd = a.endDate || a.date || '';
+
+        // If only 'from' is set, check if absence ends on or after 'from'
+        if (from && !to) {
+          return absEnd >= from;
+        }
+
+        // If only 'to' is set, check if absence starts on or before 'to'
+        if (to && !from) {
+          return absStart <= to;
+        }
+
+        // If both are set, check for overlap: absence range [absStart, absEnd]
+        // overlaps with filter range [from, to]
+        if (from && to) {
+          return absStart <= to && absEnd >= from;
+        }
+
+        return true;
+      });
     }
 
     // Sort by date (ascending for future/all, descending for past)
@@ -621,11 +639,18 @@ export class AbsenceListComponent implements OnInit {
 
   openEditModal(absence: Absence): void {
     this.editingAbsence = absence;
+    // Extract date part only (YYYY-MM-DD) to avoid timezone conversion issues
+    const extractDateString = (dateValue: string | null): string => {
+      if (!dateValue) return '';
+      const dateOnly = dateValue.split('T')[0];
+      return dateOnly || '';
+    };
+
     this.absenceForm = {
       therapistId: absence.therapistId,
       absenceType: absence.absenceType,
-      date: absence.date ? absence.date.split('T')[0] : '',
-      endDate: absence.endDate ? absence.endDate.split('T')[0] : '',
+      date: extractDateString(absence.date),
+      endDate: extractDateString(absence.endDate),
       weekday: absence.weekday || 'MONDAY',
       startTime: this.formatTime(absence.startTime || ''),
       endTime: this.formatTime(absence.endTime || ''),
@@ -777,19 +802,41 @@ export class AbsenceListComponent implements OnInit {
   }
 
   formatDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!dateStr) return '';
+    // Extract date part (YYYY-MM-DD) to avoid timezone issues
+    const dateOnly = dateStr.split('T')[0];
+    if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateStr;
+
+    // Parse as local date without timezone conversion
+    const [year, month, day] = dateOnly.split('-');
+    return `${day}.${month}.${year}`;
   }
 
   formatTime(timeStr: string): string {
-    // Accepts ISO string or HH:mm, always returns HH:mm
+    // Accepts ISO string, LocalTime string, or HH:mm, always returns HH:mm
     if (!timeStr) return '';
-    // If ISO string (e.g. 2026-02-15T05:00), extract time part
-    const match = timeStr.match(/T(\d{2}:\d{2})/);
-    if (match) return match[1];
-    // If only time, ensure HH:mm
-    const [h, m] = timeStr.split(':');
-    return `${h.padStart(2, '0')}:${(m || '00').padStart(2, '0')}`;
+
+    // Clean up input
+    timeStr = timeStr.trim();
+
+    // If ISO with time (e.g., 2026-02-15T05:00 or 1970-01-01T06:00:00)
+    if (timeStr.includes('T')) {
+      const parts = timeStr.split('T');
+      timeStr = parts[1] || '';
+    }
+
+    // If still empty, return empty
+    if (!timeStr) return '';
+
+    // Now extract HH:mm from something like "06:00" or "06:00:00"
+    const timeParts = timeStr.split(':');
+    if (timeParts.length >= 2) {
+      const h = timeParts[0];
+      const m = timeParts[1];
+      return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    }
+
+    return ''; // Fallback to empty if can't parse
   }
 
   getTherapistName(therapistId: number): string {

@@ -245,7 +245,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                               <span *ngIf="!(absence.startTime && absence.endTime)">Ganztags</span>
                             </span>
                           </div>
-                          <div class="absence-details"><span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span></div>
+                          <div class="absence-details"><span class="absence-reason">{{ absence.reason }}</span></div>
                           <div class="absence-actions">
                             <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
                             <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
@@ -326,14 +326,24 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                   </div>
                 </div>
               }
-              <div class="form-row">
-                <div class="form-group">
+              <div class="form-row time-row-centered">
+                <div class="form-group time-group">
                   <label>Von Uhrzeit</label>
-                  <input type="time" [(ngModel)]="absenceForm.startTime" name="startTime" />
+                  <div class="time-hpicker">
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(absenceForm.startTime) }}</span>
+                    <span class="tp-colon">:</span>
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'start', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(absenceForm.startTime) }}</span>
+                    <span class="tp-label">Uhr</span>
+                  </div>
                 </div>
-                <div class="form-group">
+                <div class="form-group time-group">
                   <label>Bis Uhrzeit</label>
-                  <input type="time" [(ngModel)]="absenceForm.endTime" name="endTime" />
+                  <div class="time-hpicker">
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'hour')" title="Scrollen zum Ändern">{{ getHourFromTime(absenceForm.endTime) }}</span>
+                    <span class="tp-colon">:</span>
+                    <span class="tp-value tp-scrollable" (wheel)="onTimeScroll($event, 'end', 'minute')" title="Scrollen zum Ändern">{{ getMinuteFromTime(absenceForm.endTime) }}</span>
+                    <span class="tp-label">Uhr</span>
+                  </div>
                 </div>
               </div>
               <div class="form-group">
@@ -376,9 +386,9 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .content-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1.25rem; flex: 1; overflow: hidden; }
     @media (max-width: 1000px) { .content-grid { grid-template-columns: 1fr; overflow: auto; } }
 
-    .info-card { grid-column: 1; grid-row: 1; }
+    .info-card { grid-column: 1; grid-row: 1; min-height: 500px; }
     .appointments-card { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; overflow: hidden; }
-    .absences-card { grid-column: 1; grid-row: 2; }
+    .absences-card { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; overflow: hidden; min-height: 250px; }
 
     .card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; }
     .card h2 { margin: 0; font-size: 1rem; color: #2563EB; }
@@ -412,7 +422,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .info-value.status-inactive { color: #DC2626; font-weight: 500; }
 
     /* Card Header */
-    .card-header { display: flex; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; }
+    .card-header { display: flex; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid #F3F4F6; flex-shrink: 0; }
     .result-count { font-size: 0.7rem; color: #6B7280; background: #E5E7EB; padding: 0.1rem 0.4rem; border-radius: 10px; margin-right: auto; }
     /* filter tab styling moved to global.scss (.filter-tabs) */
 
@@ -467,14 +477,14 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .status-no_show { background: #FEF3C7; color: #92400E; }
 
     /* Absences Styles */
-    .absences-list { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.75rem 1.25rem; max-height: 300px; overflow-y: auto; }
-    .absence-item { display: grid; grid-template-columns: 100px 1fr auto; gap: 0.75rem; padding: 0.5rem 0.6rem; border: 1px solid #E5E7EB; border-radius: 6px; align-items: center; font-size: 0.8rem; }
+    .absences-list { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem 1rem; flex: 1; min-height: 0; overflow-y: auto; }
+    .absence-item { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; padding: 0.25rem 0.4rem; border: 1px solid #E5E7EB; border-radius: 6px; align-items: center; font-size: 0.75rem; }
     .absence-item.recurring { border-left: 3px solid #8B5CF6; }
-    .absence-info { display: flex; flex-direction: column; }
-    .absence-day { font-weight: 500; color: #111827; font-size: 0.8rem; }
-    .absence-time { font-size: 0.7rem; color: #6B7280; }
-    .absence-details { display: flex; flex-direction: column; }
-    .absence-reason { font-size: 0.75rem; color: #374151; }
+    .absence-info { display: flex; flex-direction: row; align-items: center; gap: 0.4rem; }
+    .absence-day { font-weight: 500; color: #111827; font-size: 0.75rem; white-space: nowrap; }
+    .absence-time { font-size: 0.65rem; color: #6B7280; white-space: nowrap; }
+    .absence-details { display: none; }
+    .absence-reason { font-size: 0.7rem; color: #374151; }
     .absence-type { display: flex; align-items: center; gap: 0.4rem; }
 
     .type-badge { padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.6rem; font-weight: 500; text-transform: uppercase; }
@@ -577,6 +587,108 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
       margin-top: 1.5rem;
     }
 
+    .time-row-centered {
+      justify-content: center;
+    }
+
+    .time-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .time-hpicker {
+      display: flex;
+      align-items: center;
+      gap: 0.15rem;
+      background: #F9FAFB;
+      border: 1px solid #D1D5DB;
+      border-radius: 8px;
+      padding: 0.4rem 0.5rem;
+    }
+
+    .tp-value {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #111827;
+      min-width: 32px;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tp-scrollable {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tp-scrollable:hover {
+      background: #E5E7EB;
+      border-radius: 4px;
+    }
+
+    .tp-colon {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #9CA3AF;
+      margin: 0 0.1rem;
+    }
+
+    .tp-label {
+      font-size: 0.75rem;
+      color: #9CA3AF;
+      font-weight: 500;
+      margin-left: 0.2rem;
+    }
+
+    .weekday-group {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 0.4rem;
+      overflow: hidden;
+    }
+
+    .weekday-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.35rem 0.8rem;
+      background: linear-gradient(to right, #DBEAFE, #EFF6FF);
+      border-bottom: 1px solid #BFDBFE;
+      cursor: pointer;
+    }
+
+    .weekday-header:hover {
+      background: linear-gradient(to right, #BFDBFE, #DBEAFE);
+    }
+
+    .weekday-name {
+      font-weight: 700;
+      color: #1E40AF;
+      font-size: 0.9rem;
+      flex: 1;
+    }
+
+    .weekday-count {
+      background: #1E40AF;
+      color: white;
+      padding: 0.125rem 0.4rem;
+      border-radius: 8px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .collapse-btn {
+      background: none;
+      border: none;
+      font-size: 0.8rem;
+      color: #1E40AF;
+      cursor: pointer;
+      padding: 0.125rem;
+      margin-right: 0.5rem;
+      transition: transform 0.2s;
+    }
+
     .btn-primary {
       background: #3B82F6;
       color: white;
@@ -641,7 +753,7 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   saving = signal(false);
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
   appointmentTypeFilter = signal<'all' | 'series' | 'single'>('all');
-  absenceFilter = signal<'recurring' | 'special' | 'all'>('all');
+  absenceFilter = signal<'recurring' | 'special' | 'all'>('recurring');
 
   // Weekday grouping (for recurring absences)
   readonly weekdayOrder = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'];
@@ -688,6 +800,11 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
     telefon: '',
     isActive: true
   };
+
+  // Time picker constants
+  startHour = 6;
+  endHour = 20;
+  slotMinutes = 10;
 
   // Absence form
   absenceForm = {
@@ -885,8 +1002,14 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   }
 
   formatDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (!dateStr) return '';
+    // Extract date part (YYYY-MM-DD) to avoid timezone issues
+    const dateOnly = dateStr.split('T')[0];
+    if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateStr;
+
+    // Parse as local date without timezone conversion
+    const [year, month, day] = dateOnly.split('-');
+    return `${day}.${month}.${year}`;
   }
 
   getStatusLabel(status: string): string {
@@ -927,13 +1050,24 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   }
 
   formatTime(timeStr: string): string {
-    const date = new Date(timeStr);
-    return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    if (!timeStr) return '';
+    // Extract time part (HH:mm or HH:mm:ss) from ISO string or return as-is
+    const match = timeStr.match(/(\d{2}:\d{2})/);
+    if (match) return match[1];
+    return timeStr;
   }
 
   formatDateDE(dateStr: string): string {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    if (!dateStr) return '';
+    // Extract date part (YYYY-MM-DD) to avoid timezone issues
+    const dateOnly = dateStr.split('T')[0];
+    if (!dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return dateStr;
+
+    // Parse as local date and format with weekday
+    const [year, month, day] = dateOnly.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const weekday = date.toLocaleDateString('de-DE', { weekday: 'short' });
+    return `${weekday} ${day}.${month}.`;
   }
 
   formatDateTimeDE(dateStr: string): string {
@@ -1107,8 +1241,81 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  private extractTime(dateTimeStr: string): string {
-    const date = new Date(dateTimeStr);
-    return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
+  private extractTime(timeStr: string): string {
+    // Accepts ISO string, LocalTime string, or HH:mm, always returns HH:mm
+    if (!timeStr) return '';
+
+    // Clean up input
+    timeStr = timeStr.trim();
+
+    // If ISO with time (e.g., 2026-02-15T05:00 or 1970-01-01T06:00:00)
+    if (timeStr.includes('T')) {
+      const parts = timeStr.split('T');
+      timeStr = parts[1] || '';
+    }
+
+    // If still empty, return empty
+    if (!timeStr) return '';
+
+    // Now extract HH:mm from something like "06:00" or "06:00:00"
+    const timeParts = timeStr.split(':');
+    if (timeParts.length >= 2) {
+      const h = timeParts[0];
+      const m = timeParts[1];
+      return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    }
+
+    return ''; // Fallback to empty if can't parse
+  }
+
+  // Time picker methods
+  onTimeScroll(event: WheelEvent, which: 'start' | 'end', part: 'hour' | 'minute'): void {
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 1 : -1;
+    if (part === 'hour') {
+      this.adjustHour(which, delta);
+    } else {
+      this.adjustMinute(which, delta * this.slotMinutes);
+    }
+  }
+
+  getHourFromTime(time: string): string {
+    if (!time) return '--';
+    return time.split(':')[0] || '--';
+  }
+
+  getMinuteFromTime(time: string): string {
+    if (!time) return '--';
+    return time.split(':')[1] || '--';
+  }
+
+  adjustHour(which: 'start' | 'end', delta: number): void {
+    const prop = which === 'start' ? 'startTime' : 'endTime';
+    let current = this.absenceForm[prop];
+    if (!current) current = `${this.startHour.toString().padStart(2, '0')}:00`;
+
+    const parts = current.split(':');
+    let h = parseInt(parts[0], 10) + delta;
+    if (h < this.startHour) h = this.endHour;
+    if (h > this.endHour) h = this.startHour;
+    this.absenceForm[prop] = `${h.toString().padStart(2, '0')}:${parts[1]}`;
+  }
+
+  adjustMinute(which: 'start' | 'end', delta: number): void {
+    const prop = which === 'start' ? 'startTime' : 'endTime';
+    let current = this.absenceForm[prop];
+    if (!current) current = `${this.startHour.toString().padStart(2, '0')}:00`;
+
+    const parts = current.split(':');
+    let h = parseInt(parts[0], 10);
+    let m = parseInt(parts[1], 10) + delta;
+
+    if (m >= 60) { m = 0; h++; }
+    if (m < 0) { m = 50; h--; }
+    if (h > this.endHour) { h = this.startHour; }
+    if (h < this.startHour) { h = this.endHour; }
+    if (h === this.endHour && m > 0) { m = 0; }
+
+    this.absenceForm[prop] = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   }
 }

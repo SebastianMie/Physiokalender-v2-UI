@@ -105,15 +105,6 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
 
           @if (viewMode() === 'series') {
             <!-- Series Status -->
-            <div class="filter-group">
-              <h4>Serien-Status</h4>
-              @for (s of seriesStatuses; track s.value) {
-                <label class="filter-option">
-                  <input type="checkbox" [checked]="filterSeriesStatuses.has(s.value)" (change)="toggleSeriesStatus(s.value)" />
-                  <span class="status-badge" [class]="'status-' + s.value.toLowerCase()">{{ s.label }}</span>
-                </label>
-              }
-            </div>
           }
         </aside>
 
@@ -177,12 +168,12 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
                       <th class="col-type">Behandlung</th>
                       <th class="col-status">Status</th>
                       <th class="col-comment">Kommentar</th>
-                      <th class="col-actions-apt">Aktionen</th>
+                      <th class="col-actions">Aktionen</th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (apt of paginatedAppointments(); track apt.id) {
-                      <tr class="apt-row clickable-row" (click)="navigateToEdit(apt)"
+                      <tr class="apt-row clickable-row" (click)="openAppointmentModal(apt)"
                           [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'">
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
@@ -203,13 +194,23 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
                           </div>
                         </td>
                         <td class="col-status">
-                          <span class="status-badge" [class]="'status-' + apt.status.toLowerCase()">{{ statusLabel(apt.status) }}</span>
+                          <div class="status-cell" (click)="$event.stopPropagation()">
+                            <button class="status-badge" [class]="'status-' + apt.status.toLowerCase()" (click)="toggleStatusMenu(apt.id)" title="Status ändern">
+                              {{ statusLabel(apt.status) }}
+                            </button>
+                            @if (openStatusMenuId === apt.id) {
+                              <div class="status-dropdown-menu" (click)="$event.stopPropagation()">
+                                <button class="status-option status-option-scheduled" (click)="updateAppointmentStatus(apt.id, 'SCHEDULED')">Geplant</button>
+                                <button class="status-option status-option-confirmed" (click)="updateAppointmentStatus(apt.id, 'CONFIRMED')">Bestätigt</button>
+                                <button class="status-option status-option-cancelled" (click)="updateAppointmentStatus(apt.id, 'CANCELLED')">Storniert</button>
+                              </div>
+                            }
+                          </div>
                         </td>
                         <td class="col-comment">{{ apt.comment || '–' }}</td>
-                        <td class="col-actions-apt">
-                          <div class="action-btns">
-                            <button class="action-btn" title="Termin bearbeiten" (click)="$event.stopPropagation(); navigateToEdit(apt)">&#9998;</button>
-                          </div>
+                        <td class="col-actions" (click)="$event.stopPropagation()">
+                          <button class="btn-action" title="Im Kalender anzeigen" (click)="navigateToDay(apt.date)">📅</button>
+                          <button class="btn-delete-apt" title="Termin löschen" (click)="confirmDeleteAppointment(apt.id)">🗑️</button>
                         </td>
                       </tr>
                     }
@@ -292,7 +293,7 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
                           <div class="action-btns">
 
                             <button class="action-btn trash" title="Serie löschen" (click)="$event.stopPropagation(); confirmDeleteSeries(s)">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6z"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                              🗑️
                             </button>
                           </div>
                         </td>
@@ -359,6 +360,15 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
           (saved)="onStandaloneSeriesSaved($event)">
         </app-appointment-modal>
       }
+    }
+
+    <!-- Appointment Edit Modal -->
+    @if (showAppointmentModal && selectedAppointment) {
+      <app-appointment-modal
+        [appointmentId]="selectedAppointment.id"
+        (close)="showAppointmentModal = false; selectedAppointment = null"
+        (appointmentChanged)="onAppointmentChanged()">
+      </app-appointment-modal>
     }
 
     <!-- Patient Detail Modal -->
@@ -451,7 +461,6 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
     .appointments-table td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #F3F4F6; color: #374151; vertical-align: middle; height: 24px; }
     .apt-row { transition: background 0.1s; }
     .apt-row:hover { background: #F0F7FF; }
-    .apt-row.cancelled { opacity: 0.5; }
     .apt-row.completed td { color: #6B7280; }
     .apt-row.clickable-row { cursor: pointer; }
     .apt-row.clickable-row:hover { background: #EFF6FF; }
@@ -476,19 +485,36 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
     .tag.bwo { background: #FEF3C7; color: #92400E; font-size: 0.55rem; margin-left: 0.25rem; }
     .tag.series { background: #EDE9FE; color: #5B21B6; }
     .tag.single { background: #E5E7EB; color: #6B7280; }
-    .status-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; }
-    .status-scheduled { background: #DBEAFE; color: #1E40AF; }
-    .status-confirmed { background: #D1FAE5; color: #065F46; }
-    .status-cancelled { background: #FEE2E2; color: #991B1B; }
-    .status-completed { background: #E5E7EB; color: #374151; }
-    .status-no_show { background: #FEF3C7; color: #92400E; }
-    .status-active { background: #D1FAE5; color: #065F46; }
-    .status-paused { background: #FEF3C7; color: #92400E; }
+    /* Status cell styling für Quick-Menü */
+    .status-cell { position: relative; display: flex; align-items: center; gap: 0.25rem; }
+    .status-badge { cursor: pointer; transition: background 0.2s; font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; border: none; }
+    .status-cell { position: relative; }
+    .status-dropdown-menu { position: absolute; top: 100%; left: 0; background: white; border: 1px solid #E5E7EB; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 100; min-width: 130px; }
+    .status-option { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.75rem; border: none; background: none; width: 100%; text-align: left; display: flex; align-items: center; gap: 0.4rem; transition: background 0.15s; }
+    .status-option:hover { background: #F3F4F6; }
+    .status-option-scheduled { color: #1E40AF; }
+    .status-option-confirmed { color: #065F46; }
+    .status-option-cancelled { color: #991B1B; }
+    /* Status badges (nur für die Badge-Buttons, nicht für Dropdown-Options) */
+    .status-badge.status-scheduled { background: #DBEAFE; color: #1E40AF; }
+    .status-badge.status-confirmed { background: #D1FAE5; color: #065F46; }
+    .status-badge.status-cancelled { background: #FEE2E2; color: #991B1B; }
+    .status-badge.status-completed { background: #E5E7EB; color: #374151; }
+    .status-badge.status-no_show { background: #FEF3C7; color: #92400E; }
+    .status-badge.status-active { background: #D1FAE5; color: #065F46; }
+    .status-badge.status-paused { background: #FEF3C7; color: #92400E; }
 
     /* Action buttons */
     .action-btns { display: flex; gap: 0.25rem; }
     .action-btn { width: 32px; height: 32px; border: 1px solid #E5E7EB; background: white; border-radius: 4px; cursor: pointer; font-size: 1rem; line-height: 1; display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
     .action-btn:hover { background: #EFF6FF; border-color: #3B82F6; }
+
+    /* Appointment table action buttons */
+    .col-actions { display: flex; gap: 0.25rem; align-items: center; }
+    .btn-action { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-action:hover { color: #3B82F6; background: rgba(59, 130, 246, 0.06); }
+    .btn-delete-apt { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-delete-apt:hover { color: #DC2626; background: rgba(220, 38, 38, 0.06); }
 
     /* Cancellation display */
     .no-cancellations { color: #9CA3AF; }
@@ -570,6 +596,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
 
   loading = signal(true);
   viewMode = signal<'single' | 'series'>('single');
+  openStatusMenuId: number | null = null;
 
   // Server-side pagination state
   serverPage = signal<PageResponse<Appointment> | null>(null);
@@ -637,6 +664,11 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   // Series edit modal
   showSeriesEditModal = signal(false);
   editingSeries = signal<AppointmentSeries | null>(null);
+
+  // Appointment edit modal
+  showAppointmentModal = false;
+  selectedAppointment: Appointment | null = null;
+
   seriesEditForm = {
     startTime: '',
     endTime: '',
@@ -1226,6 +1258,34 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     this.router.navigate(['/dashboard/calendar'], { queryParams: { date } });
   }
 
+  openAppointmentModal(apt: Appointment): void {
+    this.selectedAppointment = apt;
+    this.showAppointmentModal = true;
+  }
+
+  onAppointmentChanged(): void {
+    this.applyFilters();
+  }
+
+  confirmDeleteAppointment(appointmentId: number): void {
+    if (confirm('Möchten Sie diesen Termin wirklich löschen?')) {
+      this.deleteAppointment(appointmentId);
+    }
+  }
+
+  deleteAppointment(appointmentId: number): void {
+    this.appointmentService.delete(appointmentId).subscribe({
+      next: () => {
+        this.toastService.success('Termin gelöscht');
+        this.cacheService.invalidateCache();
+        this.applyFilters();
+      },
+      error: (err: any) => {
+        this.toastService.error('Fehler beim Löschen des Termins: ' + (err.error?.message || 'Unbekannter Fehler'));
+      }
+    });
+  }
+
   navigateToEdit(apt: Appointment): void {
     const date = this.extractDate(apt.date);
     this.router.navigate(['/dashboard/calendar'], { queryParams: { date, editId: apt.id } });
@@ -1545,5 +1605,42 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       'THURSDAY': 'Donnerstag', 'FRIDAY': 'Freitag', 'SATURDAY': 'Samstag', 'SUNDAY': 'Sonntag'
     };
     return map[weekday] || weekday;
+  }
+
+  /**
+   * Toggle status menu for an appointment
+   */
+  toggleStatusMenu(appointmentId: number): void {
+    this.openStatusMenuId = this.openStatusMenuId === appointmentId ? null : appointmentId;
+  }
+
+  /**
+   * Update appointment status
+   */
+  updateAppointmentStatus(appointmentId: number, newStatus: string): void {
+    // Check if status is already set to avoid API error
+    const apt = this.paginatedAppointments().find(a => a.id === appointmentId);
+    if (apt && apt.status === newStatus) {
+      this.openStatusMenuId = null;
+      return; // Silently ignore - no need for error message
+    }
+
+    const statusUpdate = {
+      status: newStatus as 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW',
+      reason: undefined
+    };
+
+    this.appointmentService.updateStatus(appointmentId, statusUpdate).subscribe({
+      next: () => {
+        this.openStatusMenuId = null;
+        this.toastService.success('Status aktualisiert');
+        this.requestedPage.set(0);
+        this.fetchAppointments();
+      },
+      error: (err: any) => {
+        const errMsg = err?.error?.error || 'Fehler beim Aktualisieren des Status';
+        this.toastService.error(`Status konnte nicht aktualisiert werden: ${errMsg}`);
+      }
+    });
   }
 }

@@ -163,6 +163,17 @@ button {
 .btn-icon-trash:hover, .action-btn.trash:hover { background: rgba(220,38,38,0.06); color: #B91C1C !important; }
 .btn-icon-trash svg, .action-btn.trash svg { stroke: currentColor; fill: none; }
 
+/* Edit icon (borderless, black) - use on little icon buttons that edit/modify */
+.btn-icon-edit {
+  border: none !important;
+  background: transparent !important;
+  color: #111827 !important; /* black */
+  box-shadow: none !important;
+  padding: 0.25rem !important;
+}
+.btn-icon-edit:hover { background: #F3F4F6 !important; color: #000000 !important; }
+.btn-icon-edit svg { stroke: currentColor; fill: none; }
+
 
 /* Clear / chip remove */
 .input-clear-btn {

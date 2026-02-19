@@ -43,7 +43,7 @@ type SortDirection = 'asc' | 'desc';
                 </td>
                 <td>{{ getTherapistName(user.therapistId) }}</td>
                 <td class="col-actions" (click)="$event.stopPropagation()">
-                  <button class="btn-delete" title="Löschen" (click)="confirmDelete(user)">🗑️</button>
+                  <button class="btn-icon-trash" title="Löschen" (click)="confirmDelete(user)">🗑️</button>
                 </td>
               </tr>
             } @empty {

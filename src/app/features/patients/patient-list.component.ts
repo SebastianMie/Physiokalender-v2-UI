@@ -62,7 +62,7 @@ type SortDirection = 'asc' | 'desc';
                   <td><span [class]="patient.isBWO ? 'badge badge-info' : 'badge badge-inactive'">{{ patient.isBWO ? 'Ja' : 'Nein' }}</span></td>
                   <td class="col-actions" (click)="$event.stopPropagation()">
                     <button class="btn-edit" title="Bearbeiten" (click)="editPatient(patient)">&#9998;</button>
-                    <button class="btn-delete" title="Löschen" (click)="confirmDelete(patient)">🗑️</button>
+                    <button class="btn-icon-trash" title="Löschen" (click)="confirmDelete(patient)">🗑️</button>
                   </td>
                 </tr>
               } @empty {

@@ -44,6 +44,7 @@ import { PrintService } from '../../core/services/print.service';
                     type="text"
                     [(ngModel)]="patientQuery"
                     (ngModelChange)="onPatientQuery($event)"
+                    (keydown)="onPatientKeydown($event)"
                     placeholder="Patient suchen..."
                     (focus)="onPatientFieldFocus()"
                     [class.patient-selected]="!!selectedPatient"
@@ -53,7 +54,7 @@ import { PrintService } from '../../core/services/print.service';
                   <button *ngIf="selectedPatient && !(appointmentId != null && !openedForSeriesMaster)" type="button" class="input-clear-btn" (click)="clearPatient()">&times;</button>
 
                   <div class="dropdown-list" *ngIf="showPatientDropdownFn() && filteredPatients.length > 0 && !selectedPatient">
-                    <div class="dropdown-item" *ngFor="let p of filteredPatients" (click)="selectPatient(p)">
+                    <div class="dropdown-item" *ngFor="let p of filteredPatients; let idx = index" [class.highlighted]="idx === selectedPatientIndex" (click)="selectPatient(p)" (mouseover)="selectedPatientIndex = idx">
                       {{ p.fullName }}
                     </div>
                   </div>
@@ -129,11 +130,7 @@ import { PrintService } from '../../core/services/print.service';
           <!-- Series edit options when editing series master -->
           <div *ngIf="belongsToSeries && editMode === 'series'" class="series-edit-section">
             <div class="series-info-banner">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-              </svg>
+              ⚠️
               <div>Änderungen am Serientermin wirken sich auf alle Serien Elemente aus!</div>
             </div>
               <div class="form-row">
@@ -164,6 +161,34 @@ import { PrintService } from '../../core/services/print.service';
             </div>
           </div>
 
+          <!-- Status edit (only when editing existing appointment, not when creating) -->
+          <div *ngIf="appointmentId && !openedForSeriesMaster" class="form-row">
+            <div class="form-col">
+              <label>Status</label>
+              <div class="status-dropdown-wrapper">
+                <button class="status-btn" [ngClass]="'status-' + (form.status || 'SCHEDULED').toLowerCase()" (click)="toggleStatusDropdown()">
+                  {{ getStatusLabel(form.status || 'SCHEDULED') }}
+                  <span class="dropdown-arrow">▼</span>
+                </button>
+                <div class="status-dropdown-menu" *ngIf="showStatusMenu">
+                  <button class="status-option" [ngClass]="'status-' + 'scheduled'.toLowerCase()" (click)="form.status = 'SCHEDULED'; onStatusChange(); showStatusMenu = false;">
+                    Geplant
+                  </button>
+                  <button class="status-option" [ngClass]="'status-' + 'confirmed'.toLowerCase()" (click)="form.status = 'CONFIRMED'; onStatusChange(); showStatusMenu = false;">
+                    Bestätigt
+                  </button>
+                  <button class="status-option" [ngClass]="'status-' + 'cancelled'.toLowerCase()" (click)="form.status = 'CANCELLED'; onStatusChange(); showStatusMenu = false;">
+                    Storniert
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="form-col" *ngIf="showStatusReason()">
+              <label>Grund</label>
+              <input type="text" [(ngModel)]="form.statusReason" placeholder="Grund für Statusänderung (optional)" />
+            </div>
+          </div>
+
           <div class="treatment-checks">
             <label><input type="checkbox" [(ngModel)]="form.isHotair" /> Heißluft</label>
             <label><input type="checkbox" [(ngModel)]="form.isUltrasonic" /> Ultraschall</label>
@@ -177,7 +202,7 @@ import { PrintService } from '../../core/services/print.service';
             <div *ngIf="conflictDetails && conflictDetails.length" class="conflict-list" style="margin-top:0.5rem; background:#FFF7ED; border:1px solid #FEEBC8; padding:0.5rem; border-radius:6px;">
               <div *ngFor="let c of conflictDetails" class="conflict-item" style="display:flex; gap:0.75rem; align-items:flex-start; padding:0.45rem 0;">
                 <div class="conflict-icon" style="color:#F97316; flex-shrink:0;">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  ⚠️
                 </div>
                 <div style="flex:1;">
                   <div style="display:flex; gap:0.5rem; align-items:center;">
@@ -196,7 +221,7 @@ import { PrintService } from '../../core/services/print.service';
             <!-- Fallback single-line conflict message -->
             <div *ngIf="(!conflictDetails || conflictDetails.length === 0) && conflictMessage" style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; background:#FFF7ED; border:1px solid #FEEBC8; padding:0.4rem; border-radius:6px;">
               <div style="color:#F97316;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                ⚠️
               </div>
               <div style="flex:1; color:#92400E;">{{ conflictMessage }}</div>
               <div><button class="btn btn-primary" (click)="save(true)" [disabled]="savingAppointment()">Speichern (trotz Konflikt)</button></div>
@@ -209,21 +234,8 @@ import { PrintService } from '../../core/services/print.service';
           <div class="left-action-group">
             <button class="btn btn-secondary" (click)="onClose()">Abbrechen</button>
             <ng-container *ngIf="appointmentId">
-              <button type="button" class="btn-print-icon" title="Alle Termine des Patienten drucken" (click)="printPatientAppointments()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                  <rect x="6" y="14" width="12" height="8"></rect>
-                </svg>
-              </button>
-              <button type="button" class="btn-delete-icon" title="Termin löschen" (click)="confirmDeleteAppointment()">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  <line x1="10" y1="11" x2="10" y2="17"></line>
-                  <line x1="14" y1="11" x2="14" y2="17"></line>
-                </svg>
-              </button>
+              <button type="button" class="btn-print-icon" title="Alle Termine des Patienten drucken" (click)="printPatientAppointments()">🖨️</button>
+              <button type="button" class="btn-delete-icon" title="Termin löschen" (click)="confirmDeleteAppointment()">🗑️</button>
             </ng-container>
           </div>
 
@@ -351,10 +363,11 @@ import { PrintService } from '../../core/services/print.service';
   styles: [
     `
       .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:1300; }
-      .modal { background: white; border-radius: 12px; padding: 1.5rem; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; }
-      .modal.modal-sm { max-width: 420px; padding: 1rem; }
-      .modal-header-bar { display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; border-bottom:1px solid #EEF2FF; }
-      .modal-body { padding:1rem; max-height:65vh; overflow:auto; display:flex; flex-direction:column; gap:0.75rem; }
+      .modal { background: white; border-radius: 12px; display: flex; flex-direction: column; max-width: 800px; width: 90%; max-height: 95vh; }
+      .modal.modal-sm { max-width: 420px; }
+      .modal-header-bar { flex: 0 0 auto; display:flex; align-items:center; justify-content:space-between; padding:1.5rem 1.5rem 0.75rem 1.5rem; border-bottom:1px solid #EEF2FF; }
+      .modal-body { flex: 1; padding:1.5rem; overflow-y: auto; display:flex; flex-direction:column; gap:0.75rem; }
+      .modal-actions-bar { flex: 0 0 auto; display:flex; justify-content:flex-start; align-items:center; gap:0.5rem; padding: 0.75rem 1.5rem 1.5rem 1.5rem; border-top:1px solid #E5E7EB; }
       .form-row { display:flex; gap:0.75rem; }
       .form-col { flex:1; display:flex; flex-direction:column; gap:0.25rem; }
       .form-col.full { flex:1 1 100%; }
@@ -390,6 +403,7 @@ import { PrintService } from '../../core/services/print.service';
       .patient-search-wrapper input.patient-selected { color:#111827; font-weight:500; padding-right:2rem; }
       .dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #D1D5DB; border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 30; box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 2px; }
       .dropdown-item { padding: 0.45rem 0.6rem; cursor: pointer; font-size: 0.875rem; }
+      .dropdown-item.highlighted { background: #DBEAFE; color: #1E3A8A; font-weight: 500; }
 
       /* locally override new-patient button to match DailyList height */
       .btn-new-patient { padding:0.5rem 0.75rem; border:1px solid #3B82F6; background:#EFF6FF; color:#3B82F6; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; font-weight:500; }
@@ -428,7 +442,6 @@ import { PrintService } from '../../core/services/print.service';
       .tp-label { font-size: 0.75rem; color: #9CA3AF; font-weight: 500; margin-left: 0.2rem; }
 
       /* keep the older action-class name for compatibility */
-      .modal-actions-bar { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding-top:1rem; border-top:1px solid #E5E7EB; }
 
       /* New-patient modal: consistent spacing & responsive two-column layout */
       .modal-wide { max-width: 820px; width: 90%; }
@@ -449,7 +462,8 @@ import { PrintService } from '../../core/services/print.service';
       .modal-wide .btn-save { padding:0.45rem 1.25rem; background: #2563EB; color: white; border: none; border-radius: 6px; cursor: pointer; }
 
       /* modal action left buttons (print/delete) */
-      .left-action-group { display:flex; gap:0.5rem; align-items:center; margin-right:0.5rem; }
+      .left-action-group { display:flex; gap:0.5rem; align-items:center; }
+      .spacer { flex: 1; }
       .btn-print-left { background: #ffffff; color: orange; border: none; padding: 0.35rem 0.6rem; border-radius: 6px; display:flex; align-items:center; justify-content:center; }
       .btn-print-left:hover { background: #EA580C; }
       .btn-delete-left { background: #ffffff; color: red; border: none; padding: 0.35rem 0.6rem; border-radius: 6px; display:flex; align-items:center; justify-content:center; }
@@ -462,7 +476,38 @@ import { PrintService } from '../../core/services/print.service';
         .modal-wide .form-section { gap: 0.5rem; }
         .modal-wide .modal-actions { flex-direction: row; justify-content: space-between; }
       }
+
+      /* Status Dropdown Styling */
+      .status-dropdown-wrapper { position: relative; width: 100%; }
+      .status-btn { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #D1D5DB; border-radius: 6px; background: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 500; font-size: 0.875rem; transition: all 0.15s; }
+      .status-btn:hover { border-color: #9CA3AF; }
+      .dropdown-arrow { font-size: 0.65rem; margin-left: 0.5rem; }
+
+      /* Status button colors */
+      .status-btn.status-scheduled { background: #DBEAFE; color: #1E40AF; border-color: #60A5FA; }
+      .status-btn.status-confirmed { background: #DCFCE7; color: #166534; border-color: #10B981; }
+      .status-btn.status-cancelled { background: #F0F0F0; color: #4B5563; border-color: #9CA3AF; }
+      .status-btn.status-completed { background: #F3E8FF; color: #581C87; border-color: #8B5CF6; }
+      .status-btn.status-no_show { background: #FEE2E2; color: #7F1D1D; border-color: #EF4444; }
+
+      .status-dropdown-menu { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #D1D5DB; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 40; margin-top: 2px; }
+      .status-option { width: 100%; padding: 0.5rem 0.75rem; border: none; background: white; cursor: pointer; display: flex; align-items: center; font-size: 0.875rem; font-weight: 500; text-align: left; }
+      .status-option:first-child { border-radius: 5px 5px 0 0; }
+      .status-option:last-child { border-radius: 0 0 5px 5px; }
+      .status-option:hover { background: #F3F4F6; }
+
+      /* Status option colors */
+      .status-option.status-scheduled { color: #1E40AF; }
+      .status-option.status-confirmed { color: #166534; }
+      .status-option.status-cancelled { color: #5B5B5B; }
+      .status-option.status-completed { color: #581C87; }
+      .status-option.status-no_show { color: #7F1D1D; }
+      .status-option.status-scheduled::before, .status-option.status-confirmed::before, .status-option.status-cancelled::before { content: ''; width: 8px; height: 8px; border-radius: 2px; margin-right: 0.5rem; }
+      .status-option.status-scheduled::before { background: #60A5FA; }
+      .status-option.status-confirmed::before { background: #10B981; }
+      .status-option.status-cancelled::before { background: #9CA3AF; }
     `,
+
   ],
 })
 export class AppointmentModalComponent implements OnInit {
@@ -494,7 +539,9 @@ export class AppointmentModalComponent implements OnInit {
     isSeries: false,
     seriesEndDate: '',
     weeklyFrequency: 1,
-    weekday: ''
+    weekday: '',
+    status: 'SCHEDULED' as 'SCHEDULED' | 'CONFIRMED' | 'COMPLETED' | 'NO_SHOW' | 'CANCELLED',
+    statusReason: '' // Optional reason for status change
   };
 
   // patient search / selection (DailyList-like API)
@@ -504,7 +551,9 @@ export class AppointmentModalComponent implements OnInit {
   therapists: Therapist[] = [];
   selectedPatient: Patient | null = null;
   filteredPatients: Patient[] = [];
+  selectedPatientIndex = -1;  // for keyboard navigation
   showPatientDropdown = false;
+  showStatusMenu = false;
 
   // modal state
   saving = signal(false);
@@ -638,7 +687,38 @@ export class AppointmentModalComponent implements OnInit {
   // wrapper for the UI 'save' buttons (allow force)
   save(force = false) { this.saveAppointment(force); }
 
-  onPatientQuery(v: string) { this.patientQuery = v; this.patientSearchTerm = v; this.filterPatients(); }
+  onPatientQuery(v: string) { this.patientQuery = v; this.patientSearchTerm = v; this.selectedPatientIndex = -1; this.filterPatients(); }
+
+  onPatientKeydown(event: KeyboardEvent): void {
+    if (!this.showPatientDropdown || this.filteredPatients.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        if (this.selectedPatientIndex < this.filteredPatients.length - 1) {
+          this.selectedPatientIndex++;
+        }
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        if (this.selectedPatientIndex > 0) {
+          this.selectedPatientIndex--;
+        } else if (this.selectedPatientIndex === -1) {
+          this.selectedPatientIndex = this.filteredPatients.length - 1;
+        }
+        break;
+      case 'Enter':
+        event.preventDefault();
+        if (this.selectedPatientIndex >= 0 && this.selectedPatientIndex < this.filteredPatients.length) {
+          this.selectPatient(this.filteredPatients[this.selectedPatientIndex]);
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        this.showPatientDropdown = false;
+        break;
+    }
+  }
 
   selectPatient(p: Patient) {
     this.selectedPatient = p;
@@ -789,6 +869,8 @@ export class AppointmentModalComponent implements OnInit {
         this.form.startTime = start;
         this.form.endTime = end;
         this.form.comment = apt.comment || '';
+        this.form.status = apt.status || 'SCHEDULED';
+        this.form.statusReason = '';
         this.form.isHotair = !!apt.isHotair;
         this.form.isUltrasonic = !!apt.isUltrasonic;
         this.form.isElectric = !!apt.isElectric;
@@ -1118,18 +1200,24 @@ export class AppointmentModalComponent implements OnInit {
 
     this.appointmentService.update(id, request, force).subscribe({
       next: (result) => {
-        this.savingAppointment.set(false);
-        if (result.saved) {
-          this.toast.success('Termin erfolgreich aktualisiert');
-          this.saved.emit(result.appointment);
-          this.onClose();
-        } else if (result.conflictCheck?.hasConflicts) {
-          // show conflict details (deduped, skip possible self-conflict)
-          this.conflictDetails = this.normalizeConflicts(result.conflictCheck.conflicts || null);
-          this.conflictMessage = this.conflictDetails?.[0]?.message || result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
+        // If status changed, update it via separate endpoint
+        if (this.form.status && this.form.status !== (result.appointment?.status || 'SCHEDULED')) {
+          this.handleStatusUpdate(id, result.appointment);
+        } else {
+          // No status change, finish normally
+          this.savingAppointment.set(false);
+          if (result.saved) {
+            this.toast.success('Termin erfolgreich aktualisiert');
+            this.saved.emit(result.appointment);
+            this.onClose();
+          } else if (result.conflictCheck?.hasConflicts) {
+            // show conflict details (deduped, skip possible self-conflict)
+            this.conflictDetails = this.normalizeConflicts(result.conflictCheck.conflicts || null);
+            this.conflictMessage = this.conflictDetails?.[0]?.message || result.conflictCheck.conflicts?.[0]?.message || 'Konflikt erkannt';
+          }
         }
       },
-      error: (err) => {
+      error: (err: any) => {
         this.savingAppointment.set(false);
         if (err.status === 409) {
           // try to extract conflict details if backend provided them (dedupe & filter self-conflicts)
@@ -1244,5 +1332,79 @@ export class AppointmentModalComponent implements OnInit {
         this.toast.error('Fehler beim Anlegen des Serietermins');
       }
     });
+  }
+
+  // Status update helper methods
+  onStatusChange(): void {
+    // Clear reason when status changes (user can re-enter if needed)
+    if (this.form.status === 'CANCELLED') {
+      // Pre-fill with default reason for cancellation
+      this.form.statusReason = this.form.statusReason || 'Vom Patienten storniert';
+    }
+  }
+
+  showStatusReason(): boolean {
+    // Show reason field for statuses that typically need explanation
+    return this.form.status === 'CANCELLED' || this.form.status === 'NO_SHOW';
+  }
+
+  /**
+   * Update appointment status via separate PATCH endpoint.
+   * After calling appointmentService.update, if the status changed,
+   * we update it via the status endpoint.
+   */
+  private handleStatusUpdate(appointmentId: number, currentAppointment: any): void {
+    // Double-check: don't update if status is the same (avoid API validation error)
+    if (this.form.status === (currentAppointment?.status || 'SCHEDULED')) {
+      this.savingAppointment.set(false);
+      this.toast.success('Termin erfolgreich aktualisiert');
+      this.saved.emit(currentAppointment);
+      this.onClose();
+      return;
+    }
+
+    const statusUpdate = {
+      status: this.form.status,
+      reason: this.form.statusReason || undefined
+    };
+
+    this.appointmentService.updateStatus(appointmentId, statusUpdate).subscribe({
+      next: (updated) => {
+        this.savingAppointment.set(false);
+        this.toast.success('Termin und Status erfolgreich aktualisiert');
+        this.saved.emit(updated);
+        this.onClose();
+      },
+      error: (err: any) => {
+        this.savingAppointment.set(false);
+        // Status update failed, but appointment was saved - show partial warning
+        const errMsg = err?.error?.error || 'Fehler beim Aktualisieren des Status';
+        this.toast.warning(`Termin gespeichert, aber Status konnte nicht aktualisiert werden: ${errMsg}`);
+        // Still close modal and emit success for the main appointment update
+        this.saved.emit(currentAppointment);
+        this.onClose();
+      }
+    });
+  }
+
+  /**
+   * Toggle status dropdown menu visibility
+   */
+  toggleStatusDropdown(): void {
+    this.showStatusMenu = !this.showStatusMenu;
+  }
+
+  /**
+   * Get human-readable status label
+   */
+  getStatusLabel(status: string): string {
+    const statusMap: { [key: string]: string } = {
+      'SCHEDULED': 'Geplant',
+      'CONFIRMED': 'Bestätigt',
+      'COMPLETED': 'Abgesch.',
+      'NO_SHOW': 'Nicht da',
+      'CANCELLED': 'Storniert'
+    };
+    return statusMap[status] || 'Geplant';
   }
 }

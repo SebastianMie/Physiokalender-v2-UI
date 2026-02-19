@@ -41,7 +41,7 @@ type SortDirection = 'asc' | 'desc';
                 <td>{{ therapist.telefon || '-' }}</td>
                 <td><span [class]="therapist.isActive ? 'badge badge-success' : 'badge badge-inactive'">{{ therapist.isActive ? 'Aktiv' : 'Inaktiv' }}</span></td>
                 <td class="col-actions" (click)="$event.stopPropagation()">
-                  <button class="btn-delete" title="Löschen" (click)="confirmDelete(therapist)">🗑️</button>
+                  <button class="btn-icon-trash" title="Löschen" (click)="confirmDelete(therapist)">🗑️</button>
                 </td>
               </tr>
             } @empty {

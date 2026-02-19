@@ -6,12 +6,13 @@ import { TherapistService, Therapist } from '../../data-access/api/therapist.ser
 import { AppointmentService, Appointment, PageResponse, AppointmentExtendedPageParams } from '../../data-access/api/appointment.service';
 import { AbsenceService, Absence, CreateAbsenceRequest } from '../../data-access/api/absence.service';
 import { ToastService } from '../../core/services/toast.service';
+import { AppointmentModalComponent } from '../appointments/appointment-modal.standalone.component';
 import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from 'rxjs';
 
 @Component({
   selector: 'app-therapist-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
+  imports: [CommonModule, RouterModule, FormsModule, AppointmentModalComponent],
   template: `
     <div class="detail-container">
       <div class="header-section">
@@ -117,7 +118,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                   <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
                   <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
                 </div>
-                <div class="filter-tabs type-filter">
+                <div class="filter-tabs">
                   <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
                   <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
                   <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
@@ -153,15 +154,16 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                         Patient <span class="sort-icon">{{ appointmentSortField() === 'patient' ? (appointmentSortDir() === 'asc' ? '↑' : '↓') : '⇅' }}</span>
                       </th>
                       <th>Typ</th>
-                      <th>Status</th>
+                      <th class="col-status">Status</th>
                       <th>Kommentar</th>
+                      <th class="col-actions">Aktionen</th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (apt of serverAppointments(); track apt.id) {
                       <tr [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'"
-                          (click)="navigateToDay(apt.date)">
+                          (click)="openAppointmentModal(apt)">
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
                         <td class="col-time">{{ formatTimeShort(apt.startTime) }}–{{ formatTimeShort(apt.endTime) }} Uhr</td>
                         <td>
@@ -177,10 +179,25 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                             @if (apt.isBWO) { <span class="tag bwo">BWO</span> }
                           </div>
                         </td>
-                        <td>
-                          <span class="status-badge" [class]="'status-' + apt.status.toLowerCase()">{{ getStatusLabel(apt.status) }}</span>
+                        <td class="col-status">
+                          <div class="status-cell">
+                            <button class="status-badge" [class]="'status-' + apt.status.toLowerCase()" (click)="$event.stopPropagation(); openStatusMenuApt(apt.id)" title="Status ändern">
+                              {{ getStatusLabel(apt.status) }}
+                            </button>
+                            @if (openStatusMenuIdApt === apt.id) {
+                              <div class="status-dropdown-menu" (click)="$event.stopPropagation()">
+                                <button class="status-option status-scheduled" (click)="updateAppointmentStatus(apt.id, 'SCHEDULED')">Geplant</button>
+                                <button class="status-option status-confirmed" (click)="updateAppointmentStatus(apt.id, 'CONFIRMED')">Bestätigt</button>
+                                <button class="status-option status-cancelled" (click)="updateAppointmentStatus(apt.id, 'CANCELLED')">Storniert</button>
+                              </div>
+                            }
+                          </div>
                         </td>
                         <td class="col-comment">{{ apt.comment || '–' }}</td>
+                        <td class="col-actions">
+                          <button class="btn-action" title="Im Kalender anzeigen" (click)="$event.stopPropagation(); navigateToDay(apt.date)">📅</button>
+                          <button class="btn-delete-apt" (click)="$event.stopPropagation(); confirmDeleteAppointment(apt.id)" title="Termin löschen">🗑️</button>
+                        </td>
                       </tr>
                     }
                   </tbody>
@@ -247,8 +264,8 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                           </div>
                           <div class="absence-details"><span class="absence-reason">{{ absence.reason }}</span></div>
                           <div class="absence-actions">
-                            <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
-                            <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
+                            <button class="btn-icon-edit" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
+                            <button class="btn-icon-trash" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
                           </div>
                         </div>
                       }
@@ -271,8 +288,8 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
                       </div>
                       <div class="absence-details"><span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span></div>
                       <div class="absence-actions">
-                        <button class="btn-icon" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
-                        <button class="btn-icon btn-delete" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
+                        <button class="btn-icon-edit" (click)="openEditAbsenceModal(absence)" title="Bearbeiten">✏️</button>
+                        <button class="btn-icon-trash" (click)="confirmDeleteAbsence(absence)" title="Löschen">🗑️</button>
                       </div>
                     </div>
                   }
@@ -372,6 +389,29 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
           </div>
         </div>
       }
+
+      <!-- Delete Appointment Confirmation -->
+      @if (showDeleteAppointmentModal) {
+        <div class="modal-overlay" (click)="showDeleteAppointmentModal = false">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
+            <h2>Termin löschen?</h2>
+            <p class="modal-warning">Möchten Sie diesen Termin wirklich löschen?</p>
+            <div class="modal-actions">
+              <button class="btn-secondary" (click)="showDeleteAppointmentModal = false">Abbrechen</button>
+              <button class="btn-danger" (click)="deleteAppointment()">Löschen</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Appointment Edit Modal -->
+      @if (showAppointmentModal && selectedAppointment) {
+        <app-appointment-modal
+          [appointmentId]="selectedAppointment.id"
+          (close)="showAppointmentModal = false; selectedAppointment = null"
+          (appointmentChanged)="onAppointmentChanged()"
+        ></app-appointment-modal>
+      }
     </div>
   `,
   styles: [`
@@ -469,7 +509,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .tag.bwo { background: #FEF3C7; color: #92400E; }
 
     /* Status Badge */
-    .status-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; }
+    .status-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; border: none; }
     .status-scheduled { background: #DBEAFE; color: #1E40AF; }
     .status-confirmed { background: #D1FAE5; color: #065F46; }
     .status-cancelled { background: #FEE2E2; color: #991B1B; }
@@ -478,7 +518,7 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
 
     /* Absences Styles */
     .absences-list { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem 1rem; flex: 1; min-height: 0; overflow-y: auto; }
-    .absence-item { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; padding: 0.25rem 0.4rem; border: 1px solid #E5E7EB; border-radius: 6px; align-items: center; font-size: 0.75rem; }
+    .absence-item { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; padding: 0.25rem; border: 1px solid #E5E7EB; border-radius: 6px; align-items: center; font-size: 0.75rem; }
     .absence-item.recurring { border-left: 3px solid #8B5CF6; }
     .absence-info { display: flex; flex-direction: row; align-items: center; gap: 0.4rem; }
     .absence-day { font-weight: 500; color: #111827; font-size: 0.75rem; white-space: nowrap; }
@@ -730,6 +770,23 @@ import { Subject, takeUntil, finalize, debounceTime, distinctUntilChanged } from
     .btn-danger:hover {
       background: #DC2626;
     }
+
+    /* Status Dropdown & Delete Button in Appointment Table */
+    .col-status { width: 130px; }
+    .col-actions { width: 70px; display: flex; gap: 0.25rem; align-items: center; }
+    .status-cell { position: relative; display: flex; align-items: center; gap: 0.25rem; }
+    .status-dropdown-btn { background: none; border: none; padding: 0.2rem 0.4rem; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: #374151; transition: background 0.2s; }
+    .status-dropdown-btn:hover { background: #EFF6FF; }
+    .status-dropdown-menu { position: absolute; top: 100%; left: 0; background: white; border: 1px solid #E5E7EB; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 100; min-width: 130px; }
+    .status-option { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.75rem; border: none; background: none; width: 100%; text-align: left; display: flex; align-items: center; gap: 0.4rem; transition: background 0.15s; }
+    .status-option:hover { background: #F3F4F6; }
+    .status-option.status-scheduled { color: #1E40AF; }
+    .status-option.status-confirmed { color: #065F46; }
+    .status-option.status-cancelled { color: #991B1B; }
+    .btn-delete-apt { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-delete-apt:hover { color: #DC2626; background: rgba(220,38,38,0.06); }
+    .btn-action { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-action:hover { color: #3B82F6; background: rgba(59,130,246,0.06); }
   `]
 })
 export class TherapistDetailComponent implements OnInit, OnDestroy {
@@ -791,6 +848,11 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
   showDeleteAbsenceModal = false;
   editingAbsenceId: number | null = null;
   absenceToDelete: Absence | null = null;
+  showDeleteAppointmentModal = false;
+  appointmentToDeleteId: number | null = null;
+  openStatusMenuIdApt: number | null = null;
+  showAppointmentModal = false;
+  selectedAppointment: Appointment | null = null;
 
   // Therapist form
   therapistForm = {
@@ -1010,6 +1072,80 @@ export class TherapistDetailComponent implements OnInit, OnDestroy {
     // Parse as local date without timezone conversion
     const [year, month, day] = dateOnly.split('-');
     return `${day}.${month}.${year}`;
+  }
+
+  /**
+   * Open status menu for appointment
+   */
+  openStatusMenuApt(aptId: number): void {
+    this.openStatusMenuIdApt = this.openStatusMenuIdApt === aptId ? null : aptId;
+  }
+
+  /**
+   * Update appointment status
+   */
+  updateAppointmentStatus(aptId: number, newStatus: string): void {
+    const statusUpdate = {
+      status: newStatus as 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW',
+      reason: undefined
+    };
+
+    this.appointmentService.updateStatus(aptId, statusUpdate).subscribe({
+      next: () => {
+        this.openStatusMenuIdApt = null;
+        this.toast.success('Status aktualisiert');
+        this.appointmentPage.set(0);
+        this.fetchAppointments();
+      },
+      error: (err: any) => {
+        const errMsg = err?.error?.error || 'Fehler beim Aktualisieren des Status';
+        this.toast.error(`Status konnte nicht aktualisiert werden: ${errMsg}`);
+      }
+    });
+  }
+
+  /**
+   * Confirm delete appointment
+   */
+  confirmDeleteAppointment(aptId: number): void {
+    this.appointmentToDeleteId = aptId;
+    this.showDeleteAppointmentModal = true;
+  }
+
+  /**
+   * Delete appointment
+   */
+  deleteAppointment(): void {
+    if (!this.appointmentToDeleteId) return;
+
+    this.appointmentService.delete(this.appointmentToDeleteId).subscribe({
+      next: () => {
+        this.toast.success('Termin gelöscht');
+        this.showDeleteAppointmentModal = false;
+        this.appointmentToDeleteId = null;
+        this.appointmentPage.set(0);
+        this.fetchAppointments();
+      },
+      error: (err: any) => {
+        this.toast.error('Fehler beim Löschen des Termins');
+      }
+    });
+  }
+
+  /**
+   * Open appointment modal for editing
+   */
+  openAppointmentModal(apt: Appointment): void {
+    this.selectedAppointment = apt;
+    this.showAppointmentModal = true;
+  }
+
+  /**
+   * Handle appointment changes from modal
+   */
+  onAppointmentChanged(): void {
+    this.appointmentPage.set(0);
+    this.fetchAppointments();
   }
 
   getStatusLabel(status: string): string {

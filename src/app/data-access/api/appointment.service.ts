@@ -42,6 +42,11 @@ export interface MoveAppointmentRequest {
   force?: boolean;
 }
 
+export interface AppointmentStatusUpdateRequest {
+  status: 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  reason?: string; // Optional reason for status change
+}
+
 export interface ConflictCheckResult {
   hasConflicts: boolean;
   conflicts: ConflictInfo[];
@@ -202,6 +207,14 @@ export class AppointmentService {
 
   cancel(id: number, reason?: string): Observable<Appointment> {
     return this.http.post<Appointment>(`${this.apiUrl}/${id}/cancel`, { reason });
+  }
+
+  /**
+   * Update appointment status with optional reason.
+   * PATCH /api/appointments/{id}/status
+   */
+  updateStatus(id: number, statusUpdate: AppointmentStatusUpdateRequest): Observable<Appointment> {
+    return this.http.patch<Appointment>(`${this.apiUrl}/${id}/status`, statusUpdate);
   }
 
   checkConflicts(draft: CreateAppointmentRequest): Observable<ConflictCheckResult> {

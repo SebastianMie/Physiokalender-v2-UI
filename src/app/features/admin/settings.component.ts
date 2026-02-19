@@ -82,7 +82,7 @@ interface Holiday {
                       </span>
                     </td>
                     <td class="col-actions">
-                      <button class="btn-delete" (click)="deleteHoliday(holiday)">🗑️</button>
+                      <button class="btn-icon-trash" (click)="deleteHoliday(holiday)">🗑️</button>
                     </td>
                   </tr>
                 }

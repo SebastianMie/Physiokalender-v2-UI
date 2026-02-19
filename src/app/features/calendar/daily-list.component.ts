@@ -182,6 +182,10 @@ interface NewPatientForm {
                       @if (apt.isElectric) {
                         <span class="apt-tag electro">ET</span>
                       }
+                      <!-- Status Tag - nur für CANCELLED anzeigen -->
+                      @if (apt.status === 'CANCELLED') {
+                        <span class="apt-tag status-cancelled">Storniert</span>
+                      }
                     </div>
 
                     <div class="drag-handle" cdkDragHandle>&#8942;&#8942;</div>
@@ -334,6 +338,12 @@ interface NewPatientForm {
     .apt-tag.ultra { background: #818CF8; color: white; }
     .apt-tag.electro { background: #34D399; color: #064E3B; }
     .apt-tag.series-tag { background: #A78BFA; color: white; }
+    /* Status tags */
+    .apt-tag.status-scheduled { background: #60A5FA; color: white; }
+    .apt-tag.status-confirmed { background: #10B981; color: white; }
+    .apt-tag.status-completed { background: #8B5CF6; color: white; }
+    .apt-tag.status-no_show { background: #EF4444; color: white; }
+    .apt-tag.status-cancelled { background: #9CA3AF; color: white; }
     .appointment-card.series { border-left-color: #7C3AED; }
     .drag-handle { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); color: #9CA3AF; cursor: grab; font-size: 0.65rem; letter-spacing: -2px; }
     .cdk-drag-placeholder { background: #DBEAFE; border: 2px dashed #3B82F6; border-radius: 4px; }
@@ -923,6 +933,31 @@ export class DailyListComponent implements OnInit {
   }
 
   openEditDialog(apt: Appointment): void {
+    // If appointment is CANCELLED, create new appointment in same time slot instead of editing
+    if (apt.status === 'CANCELLED') {
+      this.editingAppointment.set(null);
+      this.newAppointment = this.getEmptyAppointmentForm();
+      this.newAppointment.therapistId = apt.therapistId;
+      this.newAppointment.patientId = null; // Empty patient selection for new appointment
+      this.newAppointment.date = apt.date;
+      this.newAppointment.startTime = this.formatTime(apt.startTime);
+      this.newAppointment.endTime = this.formatTime(apt.endTime);
+      this.newAppointment.comment = '';
+      this.newAppointment.isHotair = false;
+      this.newAppointment.isUltrasonic = false;
+      this.newAppointment.isElectric = false;
+      this.newAppointment.isSeries = false;
+
+      // Reset edit mode
+      this.editMode.set('single');
+      this.selectedPatient.set(null);
+      this.patientSearchTerm = '';
+      this.showPatientDropdown.set(false);
+      this.showCreateModal.set(true);
+      return;
+    }
+
+    // Normal edit for non-cancelled appointments
     this.editingAppointment.set(apt);
     this.newAppointment = this.getEmptyAppointmentForm();
     this.newAppointment.therapistId = apt.therapistId;
@@ -1403,5 +1438,17 @@ export class DailyListComponent implements OnInit {
     };
   }
 
-
+  /**
+   * Get human-readable status label for appointment
+   */
+  getStatusLabel(status: string | undefined): string {
+    const statusMap: { [key: string]: string } = {
+      'SCHEDULED': 'Geplant',
+      'CONFIRMED': 'Bestätigt',
+      'COMPLETED': 'Abgesch.',
+      'NO_SHOW': 'Nicht da',
+      'CANCELLED': 'Storniert'
+    };
+    return statusMap[status || 'SCHEDULED'] || 'Geplant';
+  }
 }

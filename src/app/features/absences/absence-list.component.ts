@@ -100,8 +100,8 @@ import { ToastService } from '../../core/services/toast.service';
                       <span class="absence-reason">{{ absence.reason || 'Kein Grund angegeben' }}</span>
                     </div>
                     <div class="absence-actions">
-                      <button class="btn-icon" (click)="openEditModal(absence)" title="Bearbeiten">✏️</button>
-                      <button class="btn-icon btn-delete" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
+                      <button class="btn-icon-edit" (click)="openEditModal(absence)" title="Bearbeiten">✏️</button>
+                      <button class="btn-icon-trash" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
                     </div>
                   </div>
                 }
@@ -143,8 +143,8 @@ import { ToastService } from '../../core/services/toast.service';
                       </td>
                       <td class="col-reason">{{ absence.reason || '–' }}</td>
                       <td class="col-actions">
-                        <button class="btn-icon" (click)="openEditModal(absence)" title="Bearbeiten">✏️</button>
-                        <button class="btn-icon btn-delete" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
+                        <button class="btn-icon-edit" (click)="openEditModal(absence)" title="Bearbeiten">✏️</button>
+                        <button class="btn-icon-trash" (click)="confirmDelete(absence)" title="Löschen">🗑️</button>
                       </td>
                     </tr>
                   }
@@ -326,7 +326,6 @@ import { ToastService } from '../../core/services/toast.service';
     .absence-actions { display: flex; align-items: center; gap: 0.25rem; }
     .btn-icon { background: none; border: none; cursor: pointer; font-size: 0.9rem; opacity: 0.5; transition: opacity 0.2s; padding: 0.25rem; }
     .btn-icon:hover { opacity: 1; }
-    .btn-delete:hover { color: #DC2626; }
 
     .btn-primary { background: #3B82F6; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.875rem; }
     .btn-primary:hover { background: #2563EB; }

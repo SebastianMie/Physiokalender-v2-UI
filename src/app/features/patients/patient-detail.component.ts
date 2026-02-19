@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -6,11 +6,12 @@ import { PatientService, Patient } from '../../data-access/api/patient.service';
 import { AppointmentService, Appointment } from '../../data-access/api/appointment.service';
 import { ToastService } from '../../core/services/toast.service';
 import { PrintService, PrintableAppointment } from '../../core/services/print.service';
+import { AppointmentModalComponent } from '../appointments/appointment-modal.standalone.component';
 
 @Component({
   selector: 'app-patient-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, AppointmentModalComponent],
   template: `
     <div class="detail-container">
       <div class="header-section">
@@ -191,7 +192,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                   <button [class.active]="appointmentFilter() === 'past'" (click)="setAppointmentFilter('past')">Vergangene</button>
                   <button [class.active]="appointmentFilter() === 'all'" (click)="setAppointmentFilter('all')">Alle</button>
                 </div>
-                <div class="filter-tabs type-filter">
+                <div class="filter-tabs">
                   <button [class.active]="appointmentTypeFilter() === 'all'" (click)="setAppointmentTypeFilter('all')">Alle</button>
                   <button [class.active]="appointmentTypeFilter() === 'series'" (click)="setAppointmentTypeFilter('series')">Serie</button>
                   <button [class.active]="appointmentTypeFilter() === 'single'" (click)="setAppointmentTypeFilter('single')">Einzel</button>
@@ -215,15 +216,16 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                       <th class="sortable" (click)="sortAppointments('therapist')">Therapeut <span class="sort-icon">{{ getSortIcon('therapist') || '⇅' }}</span></th>
                       <th class="sortable" (click)="sortAppointments('type')">Typ <span class="sort-icon">{{ getSortIcon('type') || '⇅' }}</span></th>
                       <th>Behandlung</th>
-                      <th class="sortable" (click)="sortAppointments('status')">Status <span class="sort-icon">{{ getSortIcon('status') || '⇅' }}</span></th>
+                      <th class="col-status sortable" (click)="sortAppointments('status')">Status <span class="sort-icon">{{ getSortIcon('status') || '⇅' }}</span></th>
                       <th>Kommentar</th>
+                      <th class="col-actions"></th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (apt of filteredAppointments(); track apt.id) {
                       <tr [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'"
-                          (click)="navigateToDay(apt.date)">
+                          (click)="openAppointmentModal(apt)">
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
                         <td class="col-time">{{ formatTime(apt.startTime) }}–{{ formatTime(apt.endTime) }} Uhr</td>
                         <td>
@@ -246,10 +248,25 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
                             @if (!apt.isHotair && !apt.isUltrasonic && !apt.isElectric) { <span class="tag default">KG</span> }
                           </div>
                         </td>
-                        <td>
-                          <span class="status-badge" [class]="'status-' + apt.status.toLowerCase()">{{ getStatusLabel(apt.status) }}</span>
+                        <td class="col-status">
+                          <div class="status-cell" (click)="$event.stopPropagation()">
+                            <button class="status-badge" [class]="'status-' + apt.status.toLowerCase()" (click)="openStatusMenuApt(apt.id)" title="Status ändern">
+                              {{ getStatusLabel(apt.status) }}
+                            </button>
+                            @if (openStatusMenuIdApt === apt.id) {
+                              <div class="status-dropdown-menu">
+                                <button class="status-option status-scheduled" (click)="updateAppointmentStatus(apt.id, 'SCHEDULED')">Geplant</button>
+                                <button class="status-option status-confirmed" (click)="updateAppointmentStatus(apt.id, 'CONFIRMED')">Bestätigt</button>
+                                <button class="status-option status-cancelled" (click)="updateAppointmentStatus(apt.id, 'CANCELLED')">Storniert</button>
+                              </div>
+                            }
+                          </div>
                         </td>
                         <td class="col-comment">{{ apt.comment || '–' }}</td>
+                        <td class="col-actions" (click)="$event.stopPropagation()">
+                          <button class="btn-action" title="Im Kalender anzeigen" (click)="navigateToDay(apt.date)">📅</button>
+                          <button class="btn-delete-apt" title="Termin löschen" (click)="confirmDeleteAppointment(apt.id)">🗑️</button>
+                        </td>
                       </tr>
                     }
                   </tbody>
@@ -323,6 +340,29 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
             </div>
           </div>
         </div>
+      }
+
+      <!-- Delete Appointment Confirmation -->
+      @if (showDeleteAppointmentModal) {
+        <div class="modal-overlay" (click)="showDeleteAppointmentModal = false">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
+            <h2>Termin löschen?</h2>
+            <p class="modal-warning">Möchten Sie diesen Termin wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.</p>
+            <div class="modal-actions">
+              <button class="btn-secondary" (click)="showDeleteAppointmentModal = false">Abbrechen</button>
+              <button class="btn-danger" (click)="deleteAppointment()">Löschen</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Appointment Edit Modal -->
+      @if (showAppointmentModal && selectedAppointment) {
+        <app-appointment-modal
+          [appointmentId]="selectedAppointment.id"
+          (close)="showAppointmentModal = false; selectedAppointment = null"
+          (appointmentChanged)="onAppointmentChanged()"
+        ></app-appointment-modal>
       }
     </div>
   `,
@@ -403,7 +443,7 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .tag.ultra { background: #EDE9FE; color: #5B21B6; }
     .tag.electro { background: #D1FAE5; color: #065F46; }
     .tag.default { background: #E5E7EB; color: #6B7280; }
-    .status-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; }
+    .status-badge { font-size: 0.6rem; padding: 0.1rem 0.35rem; border-radius: 3px; font-weight: 500; white-space: nowrap; border: none; }
     .status-scheduled { background: #DBEAFE; color: #1E40AF; }
     .status-confirmed { background: #D1FAE5; color: #065F46; }
     .status-cancelled { background: #FEE2E2; color: #991B1B; }
@@ -468,6 +508,22 @@ import { PrintService, PrintableAppointment } from '../../core/services/print.se
     .btn-print-action { padding: 0.45rem 1rem; background: #F97316; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 500; }
     .btn-print-action:hover { background: #EA580C; }
     .btn-print-action:disabled { background: #FDBA74; cursor: not-allowed; }
+
+    /* Status Dropdown & Delete Button in Appointment Table */
+    .status-cell { position: relative; display: flex; align-items: center; gap: 0.25rem; }
+    .status-dropdown-btn { background: none; border: none; padding: 0.2rem 0.4rem; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: #374151; transition: background 0.2s; }
+    .status-dropdown-btn:hover { background: #EFF6FF; }
+    .status-dropdown-menu { position: absolute; top: 100%; left: 0; background: white; border: 1px solid #E5E7EB; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); z-index: 100; min-width: 130px; }
+    .status-option { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.75rem; border: none; background: none; width: 100%; text-align: left; display: flex; align-items: center; gap: 0.4rem; transition: background 0.15s; }
+    .status-option:hover { background: #F3F4F6; }
+    .status-option.status-scheduled { color: #1E40AF; }
+    .status-option.status-confirmed { color: #065F46; }
+    .status-option.status-cancelled { color: #991B1B; }
+    .btn-delete-apt { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-delete-apt:hover { color: #DC2626; background: rgba(220,38,38,0.06); }
+    .btn-action { background: none; border: none; color: #9CA3AF; padding: 0.2rem 0.3rem; font-size: 1rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s, background 0.2s; }
+    .btn-action:hover { color: #3B82F6; background: rgba(59,130,246,0.06); }
+    .col-actions { display: flex; gap: 0.25rem; align-items: center; }
   `]
 })
 export class PatientDetailComponent implements OnInit {
@@ -486,6 +542,11 @@ export class PatientDetailComponent implements OnInit {
   editMode = signal(false);
   showDeleteModal = false;
   showPrintModal = false;
+  showDeleteAppointmentModal = false;
+  showAppointmentModal = false;
+  appointmentToDeleteId: number | null = null;
+  openStatusMenuIdApt: number | null = null;
+  selectedAppointment: Appointment | null = null;
   printOnlyUpcoming = true;
   selectedForPrint: { [key: number]: boolean } = {};
   appointmentFilter = signal<'upcoming' | 'past' | 'all'>('upcoming');
@@ -832,6 +893,82 @@ export class PatientDetailComponent implements OnInit {
     if (selectedApts.length > 0) {
       this.printService.printAppointments(patientName, selectedApts);
       this.showPrintModal = false;
+    }
+  }
+
+  /**
+   * Open status menu for appointment
+   */
+  openStatusMenuApt(aptId: number): void {
+    this.openStatusMenuIdApt = this.openStatusMenuIdApt === aptId ? null : aptId;
+  }
+
+  /**
+   * Update appointment status
+   */
+  updateAppointmentStatus(aptId: number, newStatus: string): void {
+    const statusUpdate = {
+      status: newStatus as 'SCHEDULED' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW',
+      reason: undefined
+    };
+
+    this.appointmentService.updateStatus(aptId, statusUpdate).subscribe({
+      next: () => {
+        this.openStatusMenuIdApt = null;
+        this.toastService.success('Status aktualisiert');
+        const patientId = this.patient()?.id;
+        if (patientId) this.loadAppointments(patientId);
+      },
+      error: (err: any) => {
+        const errMsg = err?.error?.error || 'Fehler beim Aktualisieren des Status';
+        this.toastService.error(`Status konnte nicht aktualisiert werden: ${errMsg}`);
+      }
+    });
+  }
+
+  /**
+   * Confirm delete appointment
+   */
+  confirmDeleteAppointment(aptId: number): void {
+    this.appointmentToDeleteId = aptId;
+    this.showDeleteAppointmentModal = true;
+  }
+
+  /**
+   * Delete appointment
+   */
+  deleteAppointment(): void {
+    if (!this.appointmentToDeleteId) return;
+
+    this.appointmentService.delete(this.appointmentToDeleteId).subscribe({
+      next: () => {
+        this.toastService.success('Termin gelöscht');
+        this.showDeleteAppointmentModal = false;
+        this.appointmentToDeleteId = null;
+        const patientId = this.patient()?.id;
+        if (patientId) this.loadAppointments(patientId);
+      },
+      error: (err: any) => {
+        this.toastService.error('Fehler beim Löschen des Termins');
+      }
+    });
+  }
+
+  /**
+   * Open appointment modal for editing
+   */
+  openAppointmentModal(apt: Appointment): void {
+    this.selectedAppointment = apt;
+    this.showAppointmentModal = true;
+  }
+
+  /**
+   * Handle appointment changes from modal
+   */
+  onAppointmentChanged(): void {
+    const patientId = this.patient()?.id;
+    if (patientId) {
+      this.loadAppointments(patientId);
     }
   }
 

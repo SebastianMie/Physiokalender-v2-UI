@@ -1,18 +1,21 @@
 # Test Docker Compose Stack für Angular Frontend
 # Image: physio-test-frontend
 # Port: 4201
-# Usage: docker compose -f compose.test.yml up -d
+# Usage: docker compose -f compose.test.yml --env-file .env.test up -d
+# Usage to rebuild: docker compose -f compose.test.yml --env-file .env.test up -d --build
 
 services:
   physio-test-frontend:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - NGINX_CONF=nginx.test.conf
     container_name: physio-test-frontend
     image: physio-test-frontend:latest
     restart: unless-stopped
     environment:
-      API_URL: http://localhost:8080
+      API_URL: http://physio-test-backend:8081
     ports:
       - "4201:80"
     healthcheck:
@@ -21,6 +24,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    volumes:
+      - ./nginx.test.conf:/etc/nginx/conf.d/default.conf:ro
     logging:
       driver: "json-file"
       options:
@@ -40,3 +45,4 @@ networks:
   physio-test-network:
     name: physio-test-network
     driver: bridge
+    external: true

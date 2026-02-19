@@ -245,8 +245,14 @@ export class LoginComponent implements OnInit {
       },
       error: (error) => {
         this.loading = false;
-        console.error('Login error:', error);
-        // Toast is handled by httpErrorInterceptor
+        // Fehlerauswertung
+        if (error.status === 404 && error.error?.error === 'Benutzer existiert nicht') {
+          this.toastService.error('Benutzer existiert nicht. Bitte überprüfen Sie Ihren Benutzernamen.');
+        } else if (error.status === 401 && error.error?.error === 'Falsches Passwort') {
+          this.toastService.error('Falsches Passwort. Bitte versuchen Sie es erneut.');
+        } else {
+          this.toastService.error('Login fehlgeschlagen. Bitte versuchen Sie es erneut.');
+        }
       }
     });
   }

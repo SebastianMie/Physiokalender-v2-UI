@@ -8,13 +8,19 @@ export const httpErrorInterceptor: HttpInterceptorFn = (req, next) => {
   const toastService = inject(ToastService);
   const router = inject(Router);
 
+  // Check if this is a login request
+  const isLoginRequest = req.url.includes('/auth/login');
+
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
       // 401 Unauthorized
       if (error.status === 401) {
-        localStorage.removeItem('token');
-        router.navigate(['/login']);
-        toastService.error('Sitzung abgelaufen. Bitte melden Sie sich erneut an.');
+        // Don't show toast for login requests - they handle their own errors
+        if (!isLoginRequest) {
+          localStorage.removeItem('token');
+          router.navigate(['/login']);
+          toastService.error('Sitzung abgelaufen. Bitte melden Sie sich erneut an.');
+        }
         return throwError(() => error);
       }
 
@@ -60,8 +66,11 @@ export const httpErrorInterceptor: HttpInterceptorFn = (req, next) => {
       }
 
       // Generic
-      const msg = error.error?.message || error.message || 'Ein Fehler ist aufgetreten.';
-      toastService.error(msg);
+      // Don't show toast for login requests - they handle their own errors
+      if (!isLoginRequest) {
+        const msg = error.error?.message || error.message || 'Ein Fehler ist aufgetreten.';
+        toastService.error(msg);
+      }
       return throwError(() => error);
     })
   );

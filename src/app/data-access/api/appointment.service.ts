@@ -221,6 +221,14 @@ export class AppointmentService {
     return this.http.post<ConflictCheckResult>(`${this.apiUrl}/check-conflicts`, draft);
   }
 
+  /**
+   * Get all available time of day options for selection.
+   * GET /api/appointments/time-options
+   */
+  getTimeOfDayOptions(): Observable<{ [key: number]: string }> {
+    return this.http.get<{ [key: number]: string }>(`${this.apiUrl}/time-options`);
+  }
+
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${id}`);
   }

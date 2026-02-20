@@ -8,6 +8,7 @@ import { PatientService, Patient } from '../../data-access/api/patient.service';
 import { AppointmentService, CreateAppointmentRequest } from '../../data-access/api/appointment.service';
 import { ToastService } from '../../core/services/toast.service';
 import { PracticeSettingsService } from '../../core/services/practice-settings.service';
+import { HolidayService } from '../../core/services/holiday.service';
 
 interface SearchForm {
   patientId: number | null;
@@ -41,9 +42,12 @@ interface SearchForm {
                 type="text"
                 [(ngModel)]="patientSearchQuery"
                 (ngModelChange)="onPatientSearch($event)"
-                placeholder="Patient suchen..."
+                [placeholder]="selectedPatient() ? selectedPatient()?.fullName : 'Patient suchen...'"
                 class="patient-search-input"
               />
+              @if (selectedPatient()) {
+                <button class="remove-btn" (click)="clearPatient()" title="Patient entfernen">✕</button>
+              }
               @if (showPatientDropdown() && filteredPatients().length > 0) {
                 <div class="patient-dropdown">
                   @for (patient of filteredPatients(); track patient.id) {
@@ -57,12 +61,7 @@ interface SearchForm {
                 </div>
               }
             </div>
-            @if (selectedPatient()) {
-              <div class="selected-patient-tag">
-                <span>{{ selectedPatient()?.fullName }}</span>
-                <button class="remove-btn" (click)="clearPatient()">×</button>
-              </div>
-            }
+
           </div>
 
           <!-- Therapist Selection (chips + "Alle" option) -->
@@ -93,17 +92,21 @@ interface SearchForm {
           <div class="form-group">
             <label>Tageszeit</label>
             <div class="day-part-checkboxes">
-                <label class="checkbox-label">
+              <label class="checkbox-label">
                 <input type="checkbox" [checked]="isDayPartSelected('MORNING')" (change)="toggleDayPart('MORNING')">
-                Morgens (06:00–12:00)
+                Morgens (07:00–10:00)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" [checked]="isDayPartSelected('LATE_MORNING')" (change)="toggleDayPart('LATE_MORNING')">
+                Vormittags (10:00–13:00)
               </label>
               <label class="checkbox-label">
                 <input type="checkbox" [checked]="isDayPartSelected('AFTERNOON')" (change)="toggleDayPart('AFTERNOON')">
-                Nachmittags (12:00–17:00)
+                Nachmittags (13:00–17:00)
               </label>
               <label class="checkbox-label">
                 <input type="checkbox" [checked]="isDayPartSelected('EVENING')" (change)="toggleDayPart('EVENING')">
-                Abends (19:30–21:00)
+                Abends (17:00–20:00)
               </label>
             </div>
 
@@ -340,6 +343,16 @@ interface SearchForm {
 
     .patient-search-input {
       width: 100%;
+      padding-right: 2.5rem; /* space for remove button */
+    }
+
+    .patient-search-container .remove-btn {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 0.25rem 0.5rem;
+      z-index: 10;
     }
 
     .patient-dropdown {
@@ -737,6 +750,7 @@ export class AppointmentFinderComponent implements OnInit, OnDestroy, OnChanges 
   private appointmentService = inject(AppointmentService);
   private toastService = inject(ToastService);
   private practiceSettings = inject(PracticeSettingsService);
+  private holidayService = inject(HolidayService);
 
   private destroy$ = new Subject<void>();
   private patientSearchSubject = new Subject<string>();
@@ -921,15 +935,8 @@ export class AppointmentFinderComponent implements OnInit, OnDestroy, OnChanges 
     return !!this.form.rangeFrom && !!this.form.rangeTo && this.form.durationMinutes > 0;
   }
 
-  private getHolidaysFromLocalStorage(): string[] {
-    try {
-      const raw = localStorage.getItem('physio_holidays');
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as Array<{ date: string }>; // date stored as YYYY-MM-DD
-      return parsed.map(p => p.date);
-    } catch (e) {
-      return [];
-    }
+  private getHolidays(): string[] {
+    return this.holidayService.getHolidayDates();
   }
 
 
@@ -954,7 +961,7 @@ export class AppointmentFinderComponent implements OnInit, OnDestroy, OnChanges 
 
     const finalizeAndSet = (response: SlotSearchResponse) => {
       // always filter out holidays (client-side) as requested
-      const holidays = this.getHolidaysFromLocalStorage();
+      const holidays = this.getHolidays();
       if (holidays && holidays.length > 0 && response?.slotsByDay) {
         response.slotsByDay = response.slotsByDay.filter(g => !holidays.includes(g.date));
         response.totalSlotsFound = response.slotsByDay.reduce((s, g) => s + (g.slots?.length || 0), 0);

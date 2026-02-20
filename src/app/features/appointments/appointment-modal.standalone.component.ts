@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnInit, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AppointmentService, CreateAppointmentRequest } from '../../data-access/api/appointment.service';
@@ -7,6 +7,7 @@ import { PatientService, Patient } from '../../data-access/api/patient.service';
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { ToastService } from '../../core/services/toast.service';
 import { PrintService } from '../../core/services/print.service';
+import { HolidayService } from '../../core/services/holiday.service';
 
 @Component({
   selector: 'app-appointment-modal',
@@ -75,9 +76,14 @@ import { PrintService } from '../../core/services/print.service';
           </div>
 
           <div class="form-row">
-            <div class="form-col">
+            <div class="form-col" *ngIf="!openedForSeriesMaster">
               <label>{{ form.isSeries ? 'Startdatum *' : 'Datum' }}</label>
-              <input type="date" [(ngModel)]="form.date" [disabled]="appointmentId != null && !openedForSeriesMaster" />
+              <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <input type="date" [(ngModel)]="form.date" [disabled]="appointmentId != null && !openedForSeriesMaster" />
+                @if (isSelectedDateHoliday()) {
+                  <span class="holiday-warning-small" [title]="selectedDateHolidayName() || 'Feiertag'">🎉 {{ selectedDateHolidayName() }}</span>
+                }
+              </div>
             </div>
             <div class="form-col">
               <label>Beginn</label>
@@ -99,8 +105,8 @@ import { PrintService } from '../../core/services/print.service';
             </div>
           </div>
 
-          <!-- Series options (only when creating or editing series) -->
-          <div *ngIf="form.isSeries" class="form-row">
+          <!-- Series options (only when creating NEW series, not when editing existing) -->
+          <div *ngIf="form.isSeries && !belongsToSeries" class="form-row">
               <div class="form-col">
                 <label>Enddatum *</label>
                 <input type="date" [(ngModel)]="form.seriesEndDate" name="seriesEndDate" required [min]="form.date" />
@@ -233,9 +239,9 @@ import { PrintService } from '../../core/services/print.service';
         <div class="modal-actions-bar">
           <div class="left-action-group">
             <button class="btn btn-secondary" (click)="onClose()">Abbrechen</button>
-            <ng-container *ngIf="appointmentId">
+            <ng-container *ngIf="appointmentId || openedForSeriesMaster">
               <button type="button" class="btn-print-icon" title="Alle Termine des Patienten drucken" (click)="printPatientAppointments()">🖨️</button>
-              <button type="button" class="btn-delete-icon" title="Termin löschen" (click)="confirmDeleteAppointment()">🗑️</button>
+              <button type="button" class="btn-delete-icon" [title]="openedForSeriesMaster ? 'Serie löschen' : 'Termin löschen'" (click)="confirmDeleteAppointment()">🗑️</button>
             </ng-container>
           </div>
 
@@ -338,10 +344,11 @@ import { PrintService } from '../../core/services/print.service';
     @if (showDeleteAppointmentModal()) {
       <div class="modal-overlay" (click)="cancelDeleteAppointment()">
         <div class="modal modal-sm" (click)="$event.stopPropagation()">
-          <h4 style="padding-left:2rem; padding-top:1rem; padding-bottom:1rem;">Möchten Sie diesen Termin wirklich löschen?</h4>
-          <div class="modal-actions-bar">
-            <button class="btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
-            <button class="btn btn-primary" (click)="deleteAppointment()" [disabled]="deletingAppointment()">{{ deletingAppointment() ? 'Lösche...' : 'Termin löschen' }}</button>
+          <h4 style="padding-left:2rem; padding-top:1rem; padding-bottom:1rem;">{{ editingSeriesId ? '⚠️ Serie komplett löschen?' : 'Möchten Sie diesen Termin wirklich löschen?' }}</h4>
+          <p *ngIf="editingSeriesId" style="padding-left:2rem; padding-right:2rem; color: #d32f2f;"><strong>Alle Termine dieser Serie werden gelöscht!</strong></p>
+          <div class="modal-actions-bar" style="justify-content: space-between;">
+            <button class="btn btn-secondary" (click)="cancelDeleteAppointment()">Abbrechen</button>
+            <button class="btn btn-danger" (click)="deleteAppointment()" [disabled]="deletingAppointment()">{{ deletingAppointment() ? 'Lösche...' : (editingSeriesId ? 'Serie löschen' : 'Termin löschen') }}</button>
           </div>
         </div>
       </div>
@@ -352,8 +359,8 @@ import { PrintService } from '../../core/services/print.service';
         <div class="modal modal-sm" (click)="$event.stopPropagation()">
           <h2>Serie bearbeiten?</h2>
           <p>Änderungen wirken sich auf alle zukünftigen Termine dieser Serie aus. Fortfahren?</p>
-          <div class="modal-actions-bar">
-            <button class="btn-secondary" (click)="cancelSeriesEdit()">Abbrechen</button>
+          <div class="modal-actions-bar" style="justify-content: space-between;">
+            <button class="btn btn-secondary" (click)="cancelSeriesEdit()">Abbrechen</button>
             <button class="btn btn-primary" (click)="confirmSeriesEdit()">Änderungen anwenden</button>
           </div>
         </div>
@@ -506,6 +513,9 @@ import { PrintService } from '../../core/services/print.service';
       .status-option.status-scheduled::before { background: #60A5FA; }
       .status-option.status-confirmed::before { background: #10B981; }
       .status-option.status-cancelled::before { background: #9CA3AF; }
+
+      /* Holiday warning badge */
+      .holiday-warning-small { display: inline-block; padding: 0.35rem 0.75rem; background: #FEF08A; color: #854D0E; border-radius: 6px; font-size: 0.7rem; font-weight: 600; border: 1px solid #FCD34D; white-space: nowrap; }
     `,
 
   ],
@@ -611,7 +621,8 @@ export class AppointmentModalComponent implements OnInit {
     private appointmentService: AppointmentService,
     private seriesService: AppointmentSeriesService,
     private toast: ToastService,
-    private printService: PrintService
+    private printService: PrintService,
+    private holidayService: HolidayService
   ) {}
 
   // track whether loaded appointment belongs to a series
@@ -619,6 +630,19 @@ export class AppointmentModalComponent implements OnInit {
 
   // Helper: true when modal was opened to edit a series directly via `seriesId` input
   get openedForSeriesMaster(): boolean { return !!this.seriesId || !!this.editingSeriesId; }
+
+  // Holiday helpers
+  get isSelectedDateHoliday(): () => boolean {
+    return () => this.holidayService.isHoliday(this.form.date);
+  }
+
+  get selectedDateHolidayName(): () => string | null {
+    return () => {
+      const holidays = this.holidayService.getHolidays();
+      const holiday = holidays.find(h => h.date === this.form.date);
+      return holiday ? holiday.name : null;
+    };
+  }
 
   ngOnInit(): void {
     // load reference data
@@ -751,12 +775,13 @@ export class AppointmentModalComponent implements OnInit {
   }
 
   setEditModeSingle(): void {
-    if (this.openedForSeriesMaster) return; // prevent switching when modal opened for series master
+    if (this.seriesId) return; // prevent switching when modal opened DIRECTLY for series master (via seriesId input)
     this.editMode = 'single';
+    this.editingSeriesId = null; // clear the series context when switching back to single
   }
 
   setEditModeSeries(): void {
-    if (this.openedForSeriesMaster) return; // prevent switching when modal opened for series master
+    if (this.seriesId) return; // prevent switching when modal opened DIRECTLY for series master (via seriesId input)
     this.editMode = 'series';
     // load series details if possible
     if (!this.appointmentId) return;
@@ -764,6 +789,7 @@ export class AppointmentModalComponent implements OnInit {
       next: (apt) => {
         const sid = apt.appointmentSeriesId;
         if (sid) {
+          this.editingSeriesId = sid; // ✅ WICHTIG: setze editingSeriesId damit delete richtig funktioniert
           this.seriesService.getById(sid).subscribe({
             next: (series) => {
               this.seriesEditStartDate = series.startDate ? series.startDate.split('T')[0] : this.form.date;
@@ -982,20 +1008,38 @@ export class AppointmentModalComponent implements OnInit {
   }
 
   deleteAppointment(): void {
-    if (!this.appointmentId) return;
     this.deletingAppointment.set(true);
-    this.appointmentService.delete(this.appointmentId).subscribe({
-      next: () => {
-        this.deletingAppointment.set(false);
-        this.toast.success('Termin gelöscht');
-        this.saved.emit({ deleted: true });
-        this.onClose();
-      },
-      error: () => {
-        this.deletingAppointment.set(false);
-        this.toast.error('Fehler beim Löschen des Termins');
-      }
-    });
+
+    // If editing a series master → delete entire series (with cascade to all appointments)
+    if (this.editingSeriesId) {
+      this.seriesService.delete(this.editingSeriesId).subscribe({
+        next: () => {
+          this.deletingAppointment.set(false);
+          this.toast.success('Serie mit allen Elementen gelöscht');
+          this.saved.emit({ deleted: true, seriesDeleted: true });
+          this.onClose();
+        },
+        error: () => {
+          this.deletingAppointment.set(false);
+          this.toast.error('Fehler beim Löschen der Serie');
+        }
+      });
+    }
+    // Otherwise → delete single appointment (which may be a series element)
+    else if (this.appointmentId) {
+      this.appointmentService.delete(this.appointmentId).subscribe({
+        next: () => {
+          this.deletingAppointment.set(false);
+          this.toast.success('Termin gelöscht');
+          this.saved.emit({ deleted: true });
+          this.onClose();
+        },
+        error: () => {
+          this.deletingAppointment.set(false);
+          this.toast.error('Fehler beim Löschen des Termins');
+        }
+      });
+    }
   }
 
   // New patient — handled inside this modal; keep event for backward compatibility
@@ -1075,8 +1119,9 @@ export class AppointmentModalComponent implements OnInit {
     this.appointmentService.getByPatient(pid).subscribe({
       next: (appointments) => {
         const today = new Date().toISOString().split('T')[0];
+        const holidays = new Set(this.holidayService.getHolidayDates());
         const upcomingAppointments = (appointments || [])
-          .filter(a => a.date >= today && a.status !== 'CANCELLED')
+          .filter(a => a.date >= today && a.status !== 'CANCELLED' && !holidays.has(a.date))
           .map(a => ({ id: a.id, date: a.date, startTime: a.startTime, endTime: a.endTime, patientName: a.patientName || '', therapistName: a.therapistName || '', status: a.status }));
         if (upcomingAppointments.length) {
           this.printService.printAppointments(this.selectedPatient?.fullName || 'Patient', upcomingAppointments as any);
@@ -1100,6 +1145,12 @@ export class AppointmentModalComponent implements OnInit {
     // clear any previous conflict details before attempting save
     this.conflictDetails = null;
     this.conflictMessage = null;
+
+    // If editing a series master directly (from series overview), show confirmation
+    if (this.openedForSeriesMaster) {
+      this.showSeriesEditConfirmModal.set(true);
+      return;
+    }
 
     // If editing an appointment that belongs to a series and user chose series edit -> confirm
     if (this.appointmentId && (this.form.isSeries || (this.editMode === 'series'))) {

@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 /**
  * Time of day filter for slot search.
  */
-export type DayPart = 'MORNING' | 'AFTERNOON' | 'EVENING';
+export type DayPart = 'MORNING' | 'LATE_MORNING' | 'AFTERNOON' | 'EVENING';
 
 /**
  * Request for slot search.
@@ -76,9 +76,10 @@ export class SlotSearchService {
    */
   static getDayPartLabel(dayPart: DayPart): string {
     switch (dayPart) {
-      case 'MORNING': return 'Morgens (6-12 Uhr)';
-      case 'AFTERNOON': return 'Nachmittags (12-17 Uhr)';
-      case 'EVENING': return 'Abends (19:30-21 Uhr)';
+      case 'MORNING': return 'Morgens (7:00-12:00 Uhr)';
+      case 'LATE_MORNING': return 'Vormittags (12:00-15:00 Uhr)';
+      case 'AFTERNOON': return 'Nachmittags (15:00-18:00 Uhr)';
+      case 'EVENING': return 'Abends (18:00-20:00 Uhr)';
       default: return dayPart;
     }
   }
@@ -89,6 +90,7 @@ export class SlotSearchService {
   static getDayPartShortLabel(dayPart: DayPart): string {
     switch (dayPart) {
       case 'MORNING': return 'Morgens';
+      case 'LATE_MORNING': return 'Vormittags';
       case 'AFTERNOON': return 'Nachmittags';
       case 'EVENING': return 'Abends';
       default: return dayPart;

@@ -1,0 +1,563 @@
+import { Component, OnInit, OnDestroy, inject, signal, computed } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Subject, takeUntil } from 'rxjs';
+import { AppointmentSeriesService, AppointmentSeries } from '../../data-access/api/appointment-series.service';
+import { TherapistService } from '../../data-access/api/therapist.service';
+import { ToastService } from '../../core/services/toast.service';
+import { AppointmentModalComponent } from './appointment-modal.standalone.component';
+
+interface SeriesDisplay extends AppointmentSeries {
+  displayStartTime: string;
+  displayEndTime: string;
+}
+
+@Component({
+  selector: 'app-appointment-series-overview',
+  standalone: true,
+  imports: [CommonModule, FormsModule, AppointmentModalComponent],
+  template: `
+    <div class="series-overview-container">
+      <!-- Page Header -->
+      <div class="page-header">
+        <h1>Serien-Terminübersicht</h1>
+        <p class="subtitle">Alle aktiven Therapie-Serien nach Wochentag</p>
+      </div>
+
+      <!-- Calendar Grid -->
+      <div class="calendar-wrapper">
+        <!-- Time Column + Weekdays Grid -->
+        <div class="calendar-grid">
+          <!-- Header with Weekdays (fixed: Monday to Saturday) -->
+          <div class="calendar-header">
+            <div class="time-column-header"></div>
+            @for (weekday of weekdayNames(); track $index) {
+              <div class="weekday-header">
+                <div class="weekday-name">{{ weekday }}</div>
+              </div>
+            }
+          </div>
+
+          <!-- Time Rows -->
+          <div class="calendar-body">
+            <!-- Times Column -->
+            <div class="time-column">
+              @for (time of timeSlots(); track time) {
+                <div class="time-slot">{{ time }}</div>
+              }
+            </div>
+
+            <!-- Weekdays Grid -->
+            <div class="weekdays-grid">
+              @for (dayIndex of dayIndices(); track dayIndex) {
+                <div class="weekday-column">
+                  @for (time of timeSlots(); track time) {
+                    <div class="time-block" [style.height.px]="blockHeight">
+                      <!-- Series appointments for this weekday and time -->
+                      @for (series of getSeriesForWeekdayAndTime(dayIndex, time); track series.id) {
+                        <div
+                          class="series-block"
+                          [style.top.px]="calculateSeriesOffset(series, time)"
+                          [style.height.px]="calculateSeriesHeight(series)"
+                          (click)="editSeries(series)">
+                          <div class="series-header">
+                            <span class="therapist-name">{{ series.therapistName }}</span>
+                            <span class="patient-name">{{ series.patientName }}</span>
+                          </div>
+                          <div class="series-time">
+                            {{ series.displayStartTime }} - {{ series.displayEndTime }}
+                          </div>
+                          <div class="series-details">
+                            @if (series.isHotair) {
+                              <span class="tag hotair">HL</span>
+                            }
+                            @if (series.isUltrasonic) {
+                              <span class="tag ultra">US</span>
+                            }
+                            @if (series.isElectric) {
+                              <span class="tag electro">ET</span>
+                            }
+                          </div>
+                          <div class="series-actions">
+                            <button class="action-btn print-btn" (click)="printSeries(series, $event)" title="Drucken">🖨</button>
+                            <button class="action-btn delete-btn" (click)="deleteSeries(series, $event)" title="Löschen">🗑</button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <div class="legend-item">
+          <span class="tag hotair">HL</span> Heißluft
+        </div>
+        <div class="legend-item">
+          <span class="tag ultra">US</span> Ultraschall
+        </div>
+        <div class="legend-item">
+          <span class="tag electro">ET</span> Elektrotherapie
+        </div>
+      </div>
+
+      <!-- Series Edit Modal -->
+      @if (editingSeriesId()) {
+        <app-appointment-modal
+          [seriesId]="editingSeriesId()"
+          (close)="closeEditModal()">
+        </app-appointment-modal>
+      }
+    </div>
+  `,
+  styles: [`
+    .series-overview-container {
+      padding: 1.5rem;
+      background: #f9fafb;
+      min-height: 100vh;
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+      font-size: 1.875rem;
+      font-weight: 700;
+      color: #111827;
+      margin: 0;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+    }
+
+    .calendar-wrapper {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+    }
+
+    .calendar-grid {
+      display: flex;
+      flex-direction: column;
+      min-width: min-content;
+    }
+
+    .calendar-header {
+      display: flex;
+      border-bottom: 2px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 10;
+    }
+
+    .time-column-header {
+      width: 80px;
+      flex-shrink: 0;
+      padding: 1rem;
+      border-right: 1px solid #e5e7eb;
+      box-sizing: border-box;
+    }
+
+    .weekday-header {
+      flex: 1;
+      min-width: 120px;
+      padding: 1rem;
+      text-align: center;
+      border-right: 1px solid #e5e7eb;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      box-sizing: border-box;
+    }
+
+    .weekday-header:last-child {
+      border-right: none;
+    }
+
+    .weekday-header .weekday-name {
+      font-weight: 600;
+      color: #1d4ed8;
+      font-size: 1rem;
+      margin: 0;
+    }
+
+    .calendar-body {
+      display: flex;
+      position: relative;
+    }
+
+    .time-column {
+      width: 80px;
+      flex-shrink: 0;
+      border-right: 1px solid #e5e7eb;
+      background: #f9fafb;
+      box-sizing: border-box;
+    }
+
+    .time-slot {
+      height: 60px;
+      padding: 0.25rem;
+      font-size: 0.7rem;
+      color: #6b7280;
+      text-align: center;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      box-sizing: border-box;
+    }
+
+    .weekdays-grid {
+      display: flex;
+    }
+
+    .weekday-column {
+      flex: 1;
+      min-width: 120px;
+      border-right: 1px solid #e5e7eb;
+      position: relative;
+      box-sizing: border-box;
+    }
+
+    .weekday-column:last-child {
+      border-right: none;
+    }
+
+    .time-block {
+      position: relative;
+      border-bottom: 1px solid #f3f4f6;
+      background: white;
+      min-height: 60px;
+      box-sizing: border-box;
+    }
+
+    .series-block {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+      border: 1px solid #93c5fd;
+      border-radius: 4px;
+      padding: 0.4rem;
+      cursor: pointer;
+      overflow: hidden;
+      transition: all 0.2s;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    .series-block:hover {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.12);
+      transform: translateY(-1px);
+      background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+    }
+
+    .series-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .therapist-name {
+      font-weight: 600;
+      font-size: 0.75rem;
+      color: #1d4ed8;
+    }
+
+    .patient-name {
+      font-size: 0.7rem;
+      color: #374151;
+      font-weight: 600;
+    }
+
+    .series-time {
+      font-size: 0.65rem;
+      color: #4b5563;
+      font-weight: 500;
+      margin-bottom: 0.2rem;
+    }
+
+    .series-details {
+      display: flex;
+      gap: 0.2rem;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.6rem;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tag.hotair {
+      background: #fed7aa;
+      color: #92400e;
+    }
+
+    .tag.ultra {
+      background: #c7d2fe;
+      color: #3730a3;
+    }
+
+    .tag.electro {
+      background: #ddd6fe;
+      color: #5b21b6;
+    }
+
+    .series-actions {
+      display: flex;
+      gap: 0.2rem;
+      margin-top: 0.2rem;
+      justify-content: flex-end;
+    }
+
+    .action-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.65rem;
+      padding: 0.1rem 0.2rem;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      display: none;
+    }
+
+    .action-btn:hover {
+      opacity: 1;
+    }
+
+    .series-block:hover .action-btn {
+      display: inline-block;
+    }
+
+    .print-btn {
+      color: #059669;
+    }
+
+    .delete-btn {
+      color: #dc2626;
+    }
+
+    .legend {
+      display: flex;
+      gap: 2rem;
+      padding: 1rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #4b5563;
+    }
+  `]
+})
+export class AppointmentSeriesOverviewComponent implements OnInit, OnDestroy {
+  private appointmentSeriesService = inject(AppointmentSeriesService);
+  private therapeutService = inject(TherapistService);
+  private toastService = inject(ToastService);
+  private destroy$ = new Subject<void>();
+
+  // State Signals
+  series = signal<AppointmentSeries[]>([]);
+  editingSeriesId = signal<number | null>(null);
+
+  // Fixed weekday names
+  blockHeight = 60;
+
+  // Computed values
+  allActiveSeries = computed(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return this.series().filter(s => {
+      const endDate = new Date(s.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      return endDate >= today;
+    });
+  });
+
+  weekdayNames = computed(() => ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']);
+  dayIndices = computed(() => [0, 1, 2, 3, 4, 5]); // Monday to Saturday
+
+  timeSlots = computed(() => {
+    const slots: string[] = [];
+    for (let hour = 7; hour < 20; hour++) {
+      slots.push(`${hour.toString().padStart(2, '0')}:00`);
+      slots.push(`${hour.toString().padStart(2, '0')}:30`);
+    }
+    return slots;
+  });
+
+  ngOnInit(): void {
+    this.loadData();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  private loadData(): void {
+    this.appointmentSeriesService.getActiveSeries()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (series) => {
+          this.series.set(series || []);
+        },
+        error: () => this.toastService.error('Fehler beim Laden der Serien')
+      });
+  }
+
+  getSeriesForWeekdayAndTime(dayIndex: number, timeStr: string): SeriesDisplay[] {
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const slotStart = new Date();
+    slotStart.setHours(hour, minute, 0);
+    const slotEnd = new Date(slotStart);
+    slotEnd.setMinutes(slotEnd.getMinutes() + 30);
+
+    const weekdayNames = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const targetWeekday = weekdayNames[dayIndex];
+
+    // Create a Set to prevent duplicates
+    const addedSeriesIds = new Set<number>();
+
+    return this.allActiveSeries()
+      .filter(s => {
+        // Skip if already added
+        if (addedSeriesIds.has(s.id)) return false;
+
+        // Check if weekday matches
+        if (s.weekday?.toUpperCase() !== targetWeekday) return false;
+
+        // Check if time slot overlaps with series time
+        const startTime = this.parseTime(s.startTime);
+        const endTime = this.parseTime(s.endTime);
+
+        const hasConflict = startTime < slotEnd && endTime > slotStart;
+        if (hasConflict) {
+          addedSeriesIds.add(s.id);
+        }
+        return hasConflict;
+      })
+      .map((s) => ({
+        ...s,
+        displayStartTime: this.formatTime(s.startTime),
+        displayEndTime: this.formatTime(s.endTime)
+      }));
+  }
+
+  calculateSeriesOffset(series: SeriesDisplay, timeStr: string): number {
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const slotStart = new Date();
+    slotStart.setHours(hour, minute, 0);
+
+    const [sHour, sMinute] = series.startTime.split(':').map(Number);
+    const seriesStart = new Date();
+    seriesStart.setHours(sHour, sMinute, 0);
+
+    const diffMinutes = (seriesStart.getTime() - slotStart.getTime()) / (1000 * 60);
+    return Math.max(0, (diffMinutes / 30) * this.blockHeight);
+  }
+
+  calculateSeriesHeight(series: AppointmentSeries): number {
+    const startTime = this.parseTime(series.startTime);
+    const endTime = this.parseTime(series.endTime);
+    const durationMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+    return Math.max(30, (durationMinutes / 30) * this.blockHeight);
+  }
+
+  private parseTime(timeStr: string): Date {
+    const [hour, minute] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hour, minute, 0);
+    return date;
+  }
+
+  private formatTime(timeStr: string): string {
+    return timeStr.substring(0, 5);
+  }
+
+  editSeries(series: SeriesDisplay): void {
+    this.editingSeriesId.set(series.id);
+  }
+
+  closeEditModal(): void {
+    this.editingSeriesId.set(null);
+    this.loadData();
+  }
+
+  deleteSeries(series: SeriesDisplay, event: Event): void {
+    event.stopPropagation();
+    if (confirm(`Serien-Termin "${series.patientName}" wirklich löschen?`)) {
+      this.appointmentSeriesService.delete(series.id)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: () => {
+            this.toastService.success('Serien-Termin gelöscht');
+            this.loadData();
+          },
+          error: () => this.toastService.error('Fehler beim Löschen')
+        });
+    }
+  }
+
+  printSeries(series: SeriesDisplay, event: Event): void {
+    event.stopPropagation();
+    const printWindow = window.open('', '', 'width=900,height=700');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${series.patientName} - Serien-Termin</title>
+            <style>
+              body { font-family: Arial; margin: 20px; }
+              .header { font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+              .content { font-size: 14px; line-height: 1.8; }
+              .label { font-weight: bold; }
+              .value { margin-bottom: 10px; }
+              @media print { body { margin: 0; } }
+            </style>
+          </head>
+          <body>
+            <div class="header">Serien-Termin</div>
+            <div class="content">
+              <div class="value"><span class="label">Therapeut:</span> ${series.therapistName}</div>
+              <div class="value"><span class="label">Patient:</span> ${series.patientName}</div>
+              <div class="value"><span class="label">Uhrzeit:</span> ${series.displayStartTime} - ${series.displayEndTime}</div>
+              <div class="value"><span class="label">Startdatum:</span> ${new Date(series.startDate).toLocaleDateString('de-DE')}</div>
+              <div class="value"><span class="label">Enddatum:</span> ${new Date(series.endDate).toLocaleDateString('de-DE')}</div>
+              <div class="value"><span class="label">Wochentag:</span> ${series.weekday}</div>
+              <div class="value"><span class="label">Intervall:</span> Alle ${series.weeklyFrequency || 1} Woche(n)</div>
+              <div class="value"><span class="label">Behandlungen:</span>
+                ${series.isHotair ? 'Heißluft ' : ''}${series.isUltrasonic ? 'Ultraschall ' : ''}${series.isElectric ? 'Elektrotherapie' : ''}
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 100);
+    }
+  }
+}

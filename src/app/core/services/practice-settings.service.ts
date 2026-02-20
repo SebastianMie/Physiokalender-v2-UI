@@ -1,5 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
+import { AppSettingClientService, AppSetting } from '../../data-access/api/app-setting.service';
 
 export interface OpeningHour {
   day: string;
@@ -15,13 +16,14 @@ export interface PracticeSettings {
   calendarEndTime: string;
 }
 
-const OPENING_HOURS_KEY = 'physio_opening_hours';
 const SETTINGS_KEY = 'physio_settings';
 
 @Injectable({
   providedIn: 'root',
 })
 export class PracticeSettingsService {
+  private appSettingService = inject(AppSettingClientService);
+
   private openingHoursSubject = new BehaviorSubject<OpeningHour[]>([]);
   public openingHours$ = this.openingHoursSubject.asObservable();
 
@@ -33,29 +35,60 @@ export class PracticeSettingsService {
   public settings$ = this.settingsSubject.asObservable();
 
   private readonly defaultDays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+  private readonly dayKeys = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
   constructor() {
-    this.loadFromStorage();
+    this.loadFromBackend();
   }
 
   /**
-   * Load settings from localStorage
+   * Load opening hours from backend app settings
    */
-  private loadFromStorage(): void {
-    // Load opening hours
-    const storedHours = localStorage.getItem(OPENING_HOURS_KEY);
-    if (storedHours) {
-      try {
-        const parsed = JSON.parse(storedHours);
-        this.openingHoursSubject.next(parsed);
-      } catch {
+  private loadFromBackend(): void {
+    this.appSettingService.getSettingsByCategory('OPENING_HOURS').subscribe({
+      next: (settings) => {
+        this.buildOpeningHoursFromSettings(settings);
+        this.loadGeneralSettings();
+      },
+      error: (err) => {
+        console.error('Error loading opening hours from backend:', err);
         this.initDefaultOpeningHours();
+        this.loadGeneralSettings();
       }
-    } else {
-      this.initDefaultOpeningHours();
-    }
+    });
+  }
 
-    // Load general settings
+  /**
+   * Convert app settings to OpeningHour objects
+   */
+  private buildOpeningHoursFromSettings(settings: AppSetting[]): void {
+    const hours: OpeningHour[] = this.defaultDays.map((day, index) => {
+      const dayKey = this.dayKeys[index];
+
+      // Find active setting for this day
+      const activeSetting = settings.find(s => s.key === dayKey + '_ACTIVE');
+      const isOpen = activeSetting?.value === 'true';
+
+      // Find open/close times
+      const openSetting = settings.find(s => s.key === dayKey + '_OPEN_TIME');
+      const closeSetting = settings.find(s => s.key === dayKey + '_CLOSE_TIME');
+
+      return {
+        day,
+        dayIndex: index,
+        isOpen,
+        openTime: openSetting?.value || '08:00',
+        closeTime: closeSetting?.value || '18:00'
+      };
+    });
+
+    this.openingHoursSubject.next(hours);
+  }
+
+  /**
+   * Load general settings from localStorage (will be moved to backend later if needed)
+   */
+  private loadGeneralSettings(): void {
     const storedSettings = localStorage.getItem(SETTINGS_KEY);
     if (storedSettings) {
       try {
@@ -99,15 +132,54 @@ export class PracticeSettingsService {
   }
 
   /**
-   * Save opening hours to localStorage and update the subject
+   * Save opening hours to backend and update the subject
    */
   saveOpeningHours(hours: OpeningHour[]): void {
-    localStorage.setItem(OPENING_HOURS_KEY, JSON.stringify(hours));
-    this.openingHoursSubject.next(hours);
+    const settingsToSave: AppSetting[] = [];
+
+    hours.forEach(hour => {
+      const dayKey = this.dayKeys[hour.dayIndex];
+
+      // Save active status
+      settingsToSave.push({
+        key: dayKey + '_ACTIVE',
+        value: String(hour.isOpen),
+        category: 'OPENING_HOURS',
+        description: `Is ${hour.day} an open day`
+      });
+
+      // Save open time if day is active
+      if (hour.isOpen) {
+        settingsToSave.push({
+          key: dayKey + '_OPEN_TIME',
+          value: hour.openTime,
+          category: 'OPENING_HOURS',
+          description: `${hour.day} opening time`
+        });
+
+        settingsToSave.push({
+          key: dayKey + '_CLOSE_TIME',
+          value: hour.closeTime,
+          category: 'OPENING_HOURS',
+          description: `${hour.day} closing time`
+        });
+      }
+    });
+
+    // Save to backend
+    this.appSettingService.saveSettings(settingsToSave).subscribe({
+      next: () => {
+        this.openingHoursSubject.next(hours);
+        console.log('Opening hours saved to backend');
+      },
+      error: (err) => {
+        console.error('Error saving opening hours:', err);
+      }
+    });
   }
 
   /**
-   * Save general settings to localStorage and update the subject
+   * Save general settings to localStorage
    */
   saveSettings(settings: PracticeSettings): void {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

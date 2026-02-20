@@ -1,8 +1,10 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ToastService } from '../../core/services/toast.service';
 import { PracticeSettingsService, OpeningHour } from '../../core/services/practice-settings.service';
+import { AppointmentService } from '../../data-access/api/appointment.service';
+import { HolidayService } from '../../core/services/holiday.service';
 
 interface Holiday {
   id: number;
@@ -62,7 +64,8 @@ interface Holiday {
           @if (holidays().length === 0) {
             <p class="empty-text">Keine Feiertage definiert</p>
           } @else {
-            <table class="table">
+            <div class="table-container">
+              <table class="table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -88,6 +91,7 @@ interface Holiday {
                 }
               </tbody>
             </table>
+            </div>
           }
         </div>
       </div>
@@ -190,8 +194,9 @@ interface Holiday {
     .closed-text { color: #9CA3AF; font-size: 0.875rem; font-style: italic; }
 
     /* Table */
+    .table-container { max-height: 400px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 6px; }
     .table { width: 100%; border-collapse: collapse; }
-    .table th { text-align: left; padding: 0.5rem; font-size: 0.75rem; color: #6B7280; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #E5E7EB; }
+    .table th { text-align: left; padding: 0.75rem 0.5rem; font-size: 0.75rem; color: #6B7280; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #E5E7EB; background: #F9FAFB; position: sticky; top: 0; z-index: 10; }
     .table td { padding: 0.75rem 0.5rem; border-bottom: 1px solid #F3F4F6; color: #1F2937; }
     .col-actions { width: 50px; text-align: right; }
     .btn-delete { background: none; border: none; cursor: pointer; opacity: 0.4; transition: opacity 0.2s; }
@@ -247,13 +252,28 @@ export class SettingsComponent implements OnInit {
 
   constructor(
     private toast: ToastService,
-    private practiceSettings: PracticeSettingsService
-  ) {}
+    private practiceSettings: PracticeSettingsService,
+    private appointmentService: AppointmentService,
+    private holidayService: HolidayService
+  ) {
+    // React to holiday signal changes
+    effect(() => {
+      const backendHolidays = this.holidayService.getHolidaysSignal()();
+      const holidays: Holiday[] = backendHolidays.map((h: any, index: number) => ({
+        id: h.id || index + 1,
+        name: h.name,
+        date: h.date,
+        recurring: h.recurring
+      }));
+      this.holidays.set(holidays);
+      this.nextHolidayId = Math.max(...holidays.map(h => h.id), 0) + 1;
+    }, { allowSignalWrites: true });
+  }
 
   ngOnInit() {
     this.loadOpeningHours();
-    this.loadHolidays();
     this.loadGeneralSettings();
+    // holidays are loaded via effect()
   }
 
   loadOpeningHours() {
@@ -266,31 +286,6 @@ export class SettingsComponent implements OnInit {
     this.defaultAppointmentDuration = settings.defaultAppointmentDuration;
     this.calendarStartTime = settings.calendarStartTime;
     this.calendarEndTime = settings.calendarEndTime;
-  }
-
-  loadHolidays() {
-    // Load from localStorage or use defaults
-    const stored = localStorage.getItem('physio_holidays');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      this.holidays.set(parsed);
-      this.nextHolidayId = Math.max(...parsed.map((h: Holiday) => h.id), 0) + 1;
-    } else {
-      // Default German holidays
-      const defaults: Holiday[] = [
-        { id: 1, name: 'Neujahr', date: '2025-01-01', recurring: true },
-        { id: 2, name: 'Karfreitag', date: '2025-04-18', recurring: false },
-        { id: 3, name: 'Ostermontag', date: '2025-04-21', recurring: false },
-        { id: 4, name: 'Tag der Arbeit', date: '2025-05-01', recurring: true },
-        { id: 5, name: 'Christi Himmelfahrt', date: '2025-05-29', recurring: false },
-        { id: 6, name: 'Pfingstmontag', date: '2025-06-09', recurring: false },
-        { id: 7, name: 'Tag der Deutschen Einheit', date: '2025-10-03', recurring: true },
-        { id: 8, name: 'Weihnachten', date: '2025-12-25', recurring: true },
-        { id: 9, name: '2. Weihnachtstag', date: '2025-12-26', recurring: true }
-      ];
-      this.holidays.set(defaults);
-      this.nextHolidayId = 10;
-    }
   }
 
   saveOpeningHours() {
@@ -331,7 +326,7 @@ export class SettingsComponent implements OnInit {
     }
 
     this.holidays.set(updated);
-    localStorage.setItem('physio_holidays', JSON.stringify(updated));
+    // Note: holidays.json is now managed by backend, frontend localStorage is deprecated
     this.toast.success(this.editingHoliday ? 'Feiertag aktualisiert' : 'Feiertag hinzugefügt');
     this.closeHolidayModal();
   }
@@ -339,7 +334,7 @@ export class SettingsComponent implements OnInit {
   deleteHoliday(holiday: Holiday) {
     const updated = this.holidays().filter(h => h.id !== holiday.id);
     this.holidays.set(updated);
-    localStorage.setItem('physio_holidays', JSON.stringify(updated));
+    // Note: holidays.json is now managed by backend, frontend localStorage is deprecated
     this.toast.success('Feiertag gelöscht');
   }
 

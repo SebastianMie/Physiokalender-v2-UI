@@ -34,6 +34,9 @@ import { SearchbarComponent } from '../shared/ui/searchbar.component';
             <a routerLink="/dashboard/calendar" routerLinkActive="active" class="nav-link">
               Kalender
             </a>
+            <a routerLink="/dashboard/series" routerLinkActive="active" class="nav-link">
+              Serien
+            </a>
             <a routerLink="/dashboard/appointments" routerLinkActive="active" class="nav-link">
               Termine
             </a>

@@ -37,6 +37,13 @@ const mainRoutes: Routes = [
           ),
       },
       {
+        path: 'series',
+        loadComponent: () =>
+          import('./features/appointments/appointment-series-overview.component').then(
+            (m) => m.AppointmentSeriesOverviewComponent
+          ),
+      },
+      {
         path: 'absences',
         loadComponent: () =>
           import('./features/absences/absence-list.component').then(

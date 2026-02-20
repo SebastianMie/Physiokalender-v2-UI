@@ -227,7 +227,7 @@ import { AppointmentModalComponent } from '../appointments/appointment-modal.sta
                           [class.completed]="apt.status === 'COMPLETED'"
                           (click)="openAppointmentModal(apt)">
                         <td class="col-date">{{ formatDateDE(apt.date) }}</td>
-                        <td class="col-time">{{ formatTime(apt.startTime) }}–{{ formatTime(apt.endTime) }} Uhr</td>
+                        <td class="col-time">{{ formatTime(apt.startTime) }} – {{ formatTime(apt.endTime) }} Uhr</td>
                         <td>
                           <a [routerLink]="['/dashboard/therapists', apt.therapistId]" (click)="$event.stopPropagation()">{{ apt.therapistName }}</a>
                         </td>

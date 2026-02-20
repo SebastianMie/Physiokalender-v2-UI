@@ -12,6 +12,7 @@ import { AppointmentCacheService } from '../../core/services/appointment-cache.s
 import { PracticeSettingsService } from '../../core/services/practice-settings.service';
 import { PrintService, PrintableAppointment } from '../../core/services/print.service';
 import { AbsenceService, Absence } from '../../data-access/api/absence.service';
+import { HolidayService } from '../../core/services/holiday.service';
 import { AppointmentModalComponent } from '../appointments/appointment-modal.standalone.component';
 
 interface ApplicableAbsence {
@@ -76,6 +77,9 @@ interface NewPatientForm {
           <input type="date" [value]="selectedDateStr()" (change)="onDateChange($event)" class="date-input" />
         </div>
         <h1>{{ formattedDate() }}</h1>
+        @if (isHoliday()) {
+          <span class="holiday-badge" [title]="holidayName() || 'Feiertag'">🎉 {{ holidayName() || 'Feiertag' }}</span>
+        }
         <div class="view-options">
           <span class="appointments-count">{{ totalAppointments() }} Termine</span>
           @if (!embedded) {
@@ -266,6 +270,7 @@ interface NewPatientForm {
     .nav-btn:hover, .today-btn:hover { background: #F3F4F6; }
     .date-input { padding: 0.4rem; border: 1px solid #E5E7EB; border-radius: 6px; font-size: 0.8rem; }
     h1 { margin: 0; font-size: 1.125rem; color: #111827; white-space: nowrap; }
+    .holiday-badge { display: inline-block; margin-left: 0.75rem; padding: 0.35rem 0.75rem; background: #FEF08A; color: #854D0E; border-radius: 16px; font-size: 0.75rem; font-weight: 600; border: 1px solid #FCD34D; }
     .view-options { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
     .appointments-count { font-size: 0.8rem; color: #6B7280; }
 
@@ -479,6 +484,7 @@ export class DailyListComponent implements OnInit {
   private practiceSettings = inject(PracticeSettingsService);
   private printService = inject(PrintService);
   private absenceService = inject(AbsenceService);
+  private holidayService = inject(HolidayService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
@@ -556,6 +562,17 @@ export class DailyListComponent implements OnInit {
   totalAppointments = computed(() => {
     const apts = this.appointments();
     return apts.filter(a => a.status !== 'CANCELLED').length;
+  });
+
+  isHoliday = computed(() => {
+    return this.holidayService.isHoliday(this.selectedDateStr());
+  });
+
+  holidayName = computed(() => {
+    const holidays = this.holidayService.getHolidays();
+    const dateStr = this.selectedDateStr();
+    const holiday = holidays.find(h => h.date === dateStr);
+    return holiday ? holiday.name : null;
   });
 
   /** Get absences that apply to the selected date for a therapist */

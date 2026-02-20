@@ -8,6 +8,7 @@ import { AppointmentSeriesService, AppointmentSeries, CancellationDTO, UpdateApp
 import { TherapistService, Therapist } from '../../data-access/api/therapist.service';
 import { PatientService } from '../../data-access/api/patient.service';
 import { ToastService } from '../../core/services/toast.service';
+import { HolidayService } from '../../core/services/holiday.service';
 import { AppointmentCacheService } from '../../core/services/appointment-cache.service';
 import { AppointmentModalComponent } from './appointment-modal.standalone.component';
 import { SeriesCancellationsComponent } from './series-cancellations.standalone.component';
@@ -172,7 +173,7 @@ import { SeriesCancellationsComponent } from './series-cancellations.standalone.
                     </tr>
                   </thead>
                   <tbody>
-                    @for (apt of paginatedAppointments(); track apt.id) {
+                    @for (apt of filteredAppointments(); track apt.id) {
                       <tr class="apt-row clickable-row" (click)="openAppointmentModal(apt)"
                           [class.cancelled]="apt.status === 'CANCELLED'"
                           [class.completed]="apt.status === 'COMPLETED'">
@@ -590,6 +591,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   private toastService = inject(ToastService);
   private cacheService = inject(AppointmentCacheService);
   private router = inject(Router);
+  private holidayService = inject(HolidayService);
 
   private destroy$ = new Subject<void>();
   private searchSubject = new Subject<string>();
@@ -692,9 +694,7 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
   allStatuses = [
     { value: 'SCHEDULED', label: 'Geplant' },
     { value: 'CONFIRMED', label: 'Bestätigt' },
-    { value: 'COMPLETED', label: 'Abgeschlossen' },
-    { value: 'CANCELLED', label: 'Storniert' },
-    { value: 'NO_SHOW', label: 'Nicht erschienen' }
+    { value: 'CANCELLED', label: 'Storniert' }
   ];
 
   seriesStatuses = [
@@ -1224,6 +1224,9 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
       (series.cancellations || []).map(c => c.date.split('T')[0])
     );
 
+    // Get holidays to exclude
+    const holidays = new Set(this.holidayService.getHolidayDates());
+
     const dates: string[] = [];
 
     // Find the first occurrence on or after today
@@ -1241,8 +1244,8 @@ export class AppointmentOverviewComponent implements OnInit, OnDestroy {
     // Generate all dates from today to end
     while (current <= endDate) {
       const dateStr = current.toISOString().split('T')[0];
-      // Only include dates from today onwards that are not cancelled
-      if (current >= today && !cancelledDates.has(dateStr)) {
+      // Only include dates from today onwards that are not cancelled AND not holidays
+      if (current >= today && !cancelledDates.has(dateStr) && !holidays.has(dateStr)) {
         dates.push(dateStr);
       }
       current.setDate(current.getDate() + 7 * frequency);

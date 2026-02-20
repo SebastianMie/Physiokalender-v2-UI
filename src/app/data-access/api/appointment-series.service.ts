@@ -64,6 +64,10 @@ export class AppointmentSeriesService {
     return this.http.get<AppointmentSeries[]>(this.apiUrl);
   }
 
+  getActiveSeries(): Observable<AppointmentSeries[]> {
+    return this.http.get<AppointmentSeries[]>(`${this.apiUrl}/active`);
+  }
+
   getById(id: number): Observable<AppointmentSeries> {
     return this.http.get<AppointmentSeries>(`${this.apiUrl}/${id}`);
   }

@@ -18,7 +18,7 @@ bazel-out
 .DS_Store
 
 # Environment
-.env.dev
-.env.test
-.env.prod
-.env.local
+# .env.dev
+# .env.test
+# .env.prod
+# .env.local

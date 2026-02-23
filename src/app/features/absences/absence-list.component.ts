@@ -384,7 +384,7 @@ export class AbsenceListComponent implements OnInit {
   };
 
   // Time picker constants
-  startHour = 7;
+  startHour = 6;
   endHour = 20;
   slotMinutes = 10;
 

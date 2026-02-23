@@ -729,8 +729,18 @@ export class LayoutComponent implements OnInit, OnDestroy {
       this.toastService.error('Das Passwort muss mindestens 6 Zeichen lang sein.');
       return;
     }
-    // TODO: Implement password change API call
-    this.toastService.success('Passwort erfolgreich geändert.');
-    this.closePasswordModal();
+
+    this.authService.changePassword(this.passwordForm.currentPassword, this.passwordForm.newPassword)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: () => {
+          this.toastService.success('Passwort erfolgreich geändert.');
+          this.closePasswordModal();
+        },
+        error: (err) => {
+          const errorMsg = err.error?.error || 'Fehler beim Ändern des Passworts.';
+          this.toastService.error(errorMsg);
+        }
+      });
   }
 }

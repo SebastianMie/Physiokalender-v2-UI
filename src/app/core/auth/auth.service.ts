@@ -118,4 +118,11 @@ export class AuthService {
       error: () => this.logout()
     });
   }
+
+  changePassword(currentPassword: string, newPassword: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/auth/change-password`, {
+      currentPassword,
+      newPassword
+    });
+  }
 }
